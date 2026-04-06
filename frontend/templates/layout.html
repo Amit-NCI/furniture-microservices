@@ -1,0 +1,63 @@
+
+
+
+
+
+<!DOCTYPE html>
+{% load static %}
+<html>
+<head>
+    <title>FurnitureShop</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+</head>
+
+<body>
+
+<nav>
+    <h2>FurnitureShop</h2>
+  <div id="navbar-links">
+    <!-- Dynamic content will come here -->
+</div>
+</nav>
+
+<div class="container">
+    {% block content %}{% endblock %}
+</div>
+
+<script src="{% static 'js/app.js' %}"></script>
+
+
+<script>
+function loadNavbar() {
+    let user = localStorage.getItem("user");
+    let nav = document.getElementById("navbar-links");
+
+    if (user) {
+        let userData = JSON.parse(user);
+
+       nav.innerHTML = `
+    <a href="/">Home</a>
+    <a href="/dashboard/">Products</a>
+    <a href="/cart/">Cart 🛒</a>
+    <a href="/orders/">My Orders 📦</a>
+    <span>Welcome ${userData.username}</span>
+    <button onclick="logoutUser()">Logout</button>
+`;
+    } else {
+        nav.innerHTML = `
+            <a href="/">Home</a>
+            <a href="/dashboard/">Products</a>
+            <a href="/login/">Login</a>
+            <a href="/register/">Register</a>
+        `;
+    }
+}
+
+// Load navbar on page load
+document.addEventListener("DOMContentLoaded", function () {
+    loadNavbar();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,211 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<h2>Your Cart 🛒</h2>
+
+<button onclick="removeSelected()">🗑 Remove Selected</button>
+<button onclick="clearCart()">🧹 Clear Cart</button>
+<div id="cart-list"></div>
+
+<h3 id="total-price"></h3>
+
+<button onclick="checkout()">Proceed to Checkout 💳</button>
+
+<script>
+let total = 0;
+
+async function loadCart() {
+    try {
+        const user = JSON.parse(localStorage.getItem("user"));
+
+        if (!user) {
+            alert("Please login first");
+            return;
+        }
+
+        // 🔥 IMPORTANT: filter by user_id
+        const cartRes = await fetch(`http://127.0.0.1:8003/api/orders/${user.id}/`);
+        const allItems = await cartRes.json();
+
+        // Only cart items
+        const cartItems = allItems.filter(item => item.status === "cart");
+
+        const container = document.getElementById("cart-list");
+        container.innerHTML = "";
+        total = 0;
+
+        for (let item of cartItems) {
+
+            const productRes = await fetch(`http://127.0.0.1:8002/api/products/${item.product_id}/`);
+            const product = await productRes.json();
+
+            // total += product.price * item.quantity;
+
+            container.innerHTML += `
+    <div class="card">
+
+        <!-- ✅ CHECKBOX ADDED -->
+        <input type="checkbox"
+               class="select-item"
+               data-id="${item.id}"
+               data-price="${product.price}"
+               data-qty="${item.quantity}"
+               checked
+               onchange="updateSelection()" />
+
+        <img src="${product.image_url}" width="150"/>
+        <h3>${product.name}</h3>
+        <p>${product.description}</p>
+        <p><b>€${product.price}</b></p>
+
+        <div>
+            <button onclick="updateQuantity(${item.id}, 'decrease')">➖</button>
+            <span id="qty-${item.id}">${item.quantity}</span>
+            <button onclick="updateQuantity(${item.id}, 'increase')">➕</button>
+        </div>
+
+        <button onclick="removeFromCart(${item.id})">
+            Remove ❌
+        </button>
+    </div>
+`;
+        }
+
+        document.getElementById("total-price").innerText =
+            "Total: €" + total;
+
+    } catch (error) {
+        console.error("Error:", error);
+    }
+    updateSelection();
+}
+// 🔥 IMPORTANT: Make quantity update work
+function updateSelection() {
+    let checkboxes = document.querySelectorAll(".select-item");
+    let total = 0;
+
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            let price = parseFloat(cb.dataset.price);
+            let qty = parseInt(cb.dataset.qty);
+
+            total += price * qty;
+        }
+    });
+
+    document.getElementById("total-price").innerText =
+        "Total: €" + total;
+}
+
+
+// 🔥 IMPORTANT: Make quantity update work
+async function checkout() {
+    let user = JSON.parse(localStorage.getItem("user"));
+
+    if (!user) {
+        alert("Please login first");
+        return;
+    }
+
+    const response = await fetch(`http://127.0.0.1:8003/api/checkout/${user.id}/`, {
+        method: "POST"
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+        alert(data.error);
+    } else {
+        alert("Order placed successfully 🎉");
+        window.location.href = "/orders/";
+    }
+}
+
+// 🔥 IMPORTANT: Make remove work
+async function removeFromCart(orderId) {
+    try {
+        const response = await fetch(`http://127.0.0.1:8003/api/cart/delete/${orderId}/`, {
+            method: "DELETE"
+        });
+
+        const data = await response.json();
+
+        alert(data.message || "Item removed");
+
+        loadCart(); // reload
+
+    } catch (error) {
+        console.error("Remove error:", error);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", loadCart);
+
+//  Make remove selected work
+async function removeSelected() {
+    let user = JSON.parse(localStorage.getItem("user"));
+
+    let selectedItems = [];
+
+    document.querySelectorAll(".select-item").forEach(cb => {
+        if (cb.checked) {
+            selectedItems.push(cb.dataset.id);
+        }
+    });
+
+    if (selectedItems.length === 0) {
+        alert("Select items first");
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:8003/api/cart/remove-selected/${user.id || 1}/`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ items: selectedItems })
+            }
+        );
+
+        const data = await response.json();
+
+        alert(data.message);
+
+        loadCart();
+
+    } catch (error) {
+        console.error("Remove selected error:", error);
+    }
+}
+
+//  Make clear cart work
+async function clearCart() {
+    let user = JSON.parse(localStorage.getItem("user"));
+
+    if (!confirm("Are you sure you want to clear the cart?")) {
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:8003/api/cart/clear/${user.id || 1}/`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        const data = await response.json();
+
+        alert(data.message);
+
+        loadCart();
+
+    } catch (error) {
+        console.error("Clear cart error:", error);
+    }
+}
+</script>
+
+{% endblock %}

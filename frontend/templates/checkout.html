@@ -1,0 +1,134 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<h2>Checkout 💳</h2>
+
+<div id="checkout-items"></div>
+
+<h3 id="total-amount"></h3>
+
+<h4>Select Payment Method:</h4>
+
+<label>
+    <input type="radio" name="payment" value="card" checked>
+    Card 💳
+</label>
+
+<br>
+
+<label>
+    <input type="radio" name="payment" value="cod">
+    Cash on Delivery 💵
+</label>
+
+<br><br>
+
+<button onclick="handleCheckout()">Place Order ✅</button>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const productId = params.get("product_id");
+
+let total = 0;
+
+// ================= LOAD CHECKOUT =================
+async function loadCheckout() {
+
+    const container = document.getElementById("checkout-items");
+    container.innerHTML = "";
+    total = 0;
+
+    // ================= BUY NOW =================
+    if (productId) {
+        console.log("🔥 Buy Now Flow");
+
+        const res = await fetch(`http://127.0.0.1:8002/api/products/${productId}/`);
+        const product = await res.json();
+
+        total = product.price;
+
+        container.innerHTML = `
+            <h3>${product.name}</h3>
+            <img src="${product.image_url}" width="200"/>
+            <p>${product.description}</p>
+            <p><b>€${product.price}</b></p>
+        `;
+    }
+
+    // ================= CART FLOW =================
+    else {
+        console.log("🔥 Cart Checkout Flow");
+
+        const cartRes = await fetch("http://127.0.0.1:8003/api/cart/");
+        const cartItems = await cartRes.json();
+
+        for (let item of cartItems) {
+
+            const productRes = await fetch(`http://127.0.0.1:8002/api/products/${item.product_id}/`);
+            const product = await productRes.json();
+
+            total += product.price * item.quantity;
+
+            container.innerHTML += `
+                <div>
+                    <h3>${product.name}</h3>
+                    <img src="${product.image_url}" width="150"/>
+                    <p>${product.description}</p>
+                    <p><b>€${product.price}</b></p>
+                    <p>Qty: ${item.quantity}</p>
+                </div>
+                <hr>
+            `;
+        }
+    }
+
+    document.getElementById("total-amount").innerText =
+        "Total: €" + total;
+}
+
+// ================= HANDLE CHECKOUT =================
+async function handleCheckout() {
+
+    let user = JSON.parse(localStorage.getItem("user"));
+
+    if (!user) {
+        alert("Login required");
+        return;
+    }
+
+    let paymentMethod = document.querySelector('input[name="payment"]:checked').value;
+
+    console.log("Payment:", paymentMethod);
+
+    // ================= BUY NOW =================
+    if (productId) {
+        await fetch("http://127.0.0.1:8003/api/orders/", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                user_id: user.id,
+                product_id: productId,
+                quantity: 1,
+                status: "placed"
+            })
+        });
+    }
+
+    // ================= CART CHECKOUT =================
+    else {
+        await fetch(`http://127.0.0.1:8003/api/checkout/${user.id}/`, {
+            method: "POST"
+        });
+    }
+
+    alert("Payment successful 🎉");
+
+    window.location.href = "/orders/";
+}
+
+document.addEventListener("DOMContentLoaded", loadCheckout);
+
+</script>
+
+{% endblock %}

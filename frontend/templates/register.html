@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<h2>Register</h2>
+
+<input type="text" id="username" placeholder="Username"><br><br>
+<input type="password" id="password" placeholder="Password"><br><br>
+
+<select id="role">
+    <option value="customer">Customer</option>
+    <option value="staff">Staff</option>
+</select><br><br>
+
+<button onclick="registerUser()">Register</button>
+
+{% endblock %}
