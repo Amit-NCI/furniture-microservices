@@ -43,7 +43,7 @@ async function loadCheckout() {
     if (productId) {
         console.log("🔥 Buy Now Flow");
 
-        const res = await fetch(`http://127.0.0.1:8002/api/products/${productId}/`);
+        const res = await fetch(`${PRODUCT_URL}/api/products/${productId}/`);
         const product = await res.json();
 
         total = product.price;
@@ -60,12 +60,12 @@ async function loadCheckout() {
     else {
         console.log("🔥 Cart Checkout Flow");
 
-        const cartRes = await fetch("http://127.0.0.1:8003/api/cart/");
+        const cartRes = await fetch(`${ORDER_URL}/api/cart/`);
         const cartItems = await cartRes.json();
 
         for (let item of cartItems) {
 
-            const productRes = await fetch(`http://127.0.0.1:8002/api/products/${item.product_id}/`);
+            const productRes = await fetch(`${PRODUCT_URL}/api/products/${item.product_id}/`);
             const product = await productRes.json();
 
             total += product.price * item.quantity;
@@ -103,7 +103,7 @@ async function handleCheckout() {
 
     // ================= BUY NOW =================
     if (productId) {
-        await fetch("http://127.0.0.1:8003/api/orders/", {
+        await fetch(`${ORDER_URL}/api/orders/`, {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify({
@@ -117,7 +117,7 @@ async function handleCheckout() {
 
     // ================= CART CHECKOUT =================
     else {
-        await fetch(`http://127.0.0.1:8003/api/checkout/${user.id}/`, {
+        await fetch(`${ORDER_URL}/api/checkout/${user.id}/`, {
             method: "POST"
         });
     }

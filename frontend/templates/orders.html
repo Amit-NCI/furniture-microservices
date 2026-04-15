@@ -16,7 +16,7 @@ async function loadOrders() {
         return;
     }
 
-    const res = await fetch(`http://127.0.0.1:8003/api/orders/history/${user.id}`);
+    const res = await fetch(`${ORDER_URL}/api/orders/history/${user.id}`);
     const orders = await res.json();
 
     const container = document.getElementById("order-list");
@@ -29,7 +29,7 @@ async function loadOrders() {
 
     for (let order of orders) {
 
-        const productRes = await fetch(`http://127.0.0.1:8002/api/products/${order.product_id}/`);
+        const productRes = await fetch(`${PRODUCT_URL}/api/products/${order.product_id}/`);
         const product = await productRes.json();
 
         container.innerHTML += `

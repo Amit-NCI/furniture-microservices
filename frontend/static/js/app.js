@@ -1,8 +1,13 @@
 console.log("✅ app.js loaded");
 
+const AUTH_URL = "http://localhost:8001";
+const PRODUCT_URL = "http://localhost:8002";
+const ORDER_URL = "http://localhost:8003";
+
+
 // ================= REGISTER =================
 function registerUser() {
-    fetch("http://localhost:8001/api/auth/register/", {
+    fetch(`${AUTH_URL}/api/auth/register/`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -23,7 +28,7 @@ function registerUser() {
 
 // ================= LOGIN =================
 function loginUser() {
-    fetch("http://localhost:8001/api/auth/login/", {
+    fetch(`${AUTH_URL}/api/auth/login/`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -60,7 +65,7 @@ function addToCart(productId) {
         return;
     }
 
-    fetch("http://127.0.0.1:8003/api/orders/", {
+    fetch(`${ORDER_URL}/api/orders/`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -82,7 +87,7 @@ async function buyNow(productId) {
         return;
     }
 
-    await fetch("http://127.0.0.1:8003/api/orders/", {
+    await fetch(`${ORDER_URL}/api/orders/`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -99,7 +104,7 @@ async function buyNow(productId) {
 
 // ================= LOAD PRODUCTS =================
 async function loadProducts() {
-    const res = await fetch("http://127.0.0.1:8002/api/products/");
+    const res = await fetch(`${PRODUCT_URL}/api/products/`);
     const products = await res.json();
 
     let container = document.getElementById("product-list");
@@ -143,7 +148,7 @@ async function checkout() {
     }
 
     try {
-        const response = await fetch(`http://127.0.0.1:8003/api/checkout/${user.id || 1}/`, {
+        const response = await fetch(`${ORDER_URL}/api/checkout/${user.id || 1}/`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -181,7 +186,7 @@ async function placeOrder() {
         return;
     }
 
-    await fetch("http://127.0.0.1:8003/api/orders/", {
+    await fetch(`${ORDER_URL}/api/orders/`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
@@ -201,7 +206,7 @@ async function removeFromCart(orderId) {
     console.log("Removing item:", orderId);
 
     try {
-        const response = await fetch(`http://127.0.0.1:8003/api/cart/${orderId}/`, {
+        const response = await fetch(`${ORDER_URL}/api/cart/${orderId}/`, {
             method: "DELETE"
         });
 
@@ -236,7 +241,7 @@ document.addEventListener("DOMContentLoaded", function () {
 // ================= UPDATE QUANTITY =================
 async function updateQuantity(orderId, action) {
     try {
-        const response = await fetch(`http://127.0.0.1:8003/api/cart/update/${orderId}/`, {
+        const response = await fetch(`${ORDER_URL}/api/cart/update/${orderId}/`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
