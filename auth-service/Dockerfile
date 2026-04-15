@@ -1,17 +1,13 @@
-# Use official Python image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy project files
 COPY . .
 
-# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port
+WORKDIR /app/auth_service
+
 EXPOSE 8001
 
-# Run Django server
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8001"]
+CMD ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8001"]

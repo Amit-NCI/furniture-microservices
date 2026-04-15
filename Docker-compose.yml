@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    ports:
+      - "8001:8001"
+    networks:
+      - microservices-network
+
+  product-service:
+    build: ./product-service
+    container_name: product-service
+    ports:
+      - "8002:8002"
+    networks:
+      - microservices-network
+
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    ports:
+      - "8003:8003"
+    networks:
+      - microservices-network
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "8004:8004"
+    networks:
+      - microservices-network
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+
+networks:
+  microservices-network:
+    driver: bridge
