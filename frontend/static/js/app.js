@@ -1,8 +1,8 @@
 console.log("✅ app.js loaded");
 
-const AUTH_URL = "http://localhost:8001";
-const PRODUCT_URL = "http://localhost:8002";
-const ORDER_URL = "http://localhost:8003";
+const AUTH_URL = "http://192.168.2.6:8001";
+const PRODUCT_URL = "http://192.168.2.6:8002";
+const ORDER_URL = "http://192.168.2.6:8003";
 
 
 // ================= REGISTER =================

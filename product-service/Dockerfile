@@ -6,7 +6,7 @@ COPY . .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-WORKDIR /app/product_service
+WORKDIR /app
 
 EXPOSE 8002
 
