@@ -1,198 +1,549 @@
-# 🛋️ Furniture E-Commerce Microservices System
+#  Furniture E-Commerce Platform (Microservices Architecture)
 
-## 📌 Project Summary
-This project is a **microservices-based e-commerce application** designed to simulate a real-world online furniture store.  
-It demonstrates how independent services communicate via REST APIs to handle authentication, product management, cart operations, and order processing.
+##  Project Overview
 
-The system is built using **Django, Django REST Framework, and JavaScript**, following modern backend architecture practices.
+This project is a containerized e-commerce platform built using a Microservices Architecture.
 
----
+The application is divided into independent services responsible for authentication, product management, order processing, and frontend rendering. All services communicate through REST APIs and are orchestrated using Docker Compose.
 
-## 🎯 Key Highlights
+The project was built to gain hands-on experience with:
 
-- Designed using **Microservices Architecture**
-- Built **independent backend services**
-- Implemented **REST API communication**
-- Developed **complete cart & checkout system**
-- Created **order lifecycle tracking (cart → placed → shipped → delivered)**
-- Debugged real-world issues like:
-  - API mismatches
-  - Status inconsistencies
-  - Frontend-backend integration bugs
+* Microservices Architecture
+* Django REST Framework
+* JWT Authentication
+* Docker & Docker Compose
+* Nginx Reverse Proxy
+* Service-to-Service Communication
+* REST API Design
+* Persistent Storage
+* Backend System Design
 
 ---
 
-## 🏗️ System Architecture
-User (Browser)
-↓
-Frontend Service (Django + JS) [Port 8004]
-↓
-┌───────────────┬───────────────┬───────────────┐
-↓ ↓ ↓
+#  Key Features
+
+### Authentication Service
+
+* User Registration
+* User Login
+* JWT Authentication
+* Access Token & Refresh Token Generation
+* Role-Based Users
+* User Approval Workflow
+
+### Product Service
+
+* Product Catalog Management
+* Product Listing API
+* Product Detail API
+
+### Order Service
+
+* Add Products to Cart
+* Update Cart Quantity
+* Remove Items from Cart
+* Checkout Selected Items
+* Order History
+* Order Status Tracking
+* JWT Protected Endpoints
+
+### Frontend Service
+
+* Product Browsing
+* Cart Management
+* Checkout Flow
+* Order Tracking UI
+
+### Infrastructure
+
+* Dockerized Microservices
+* Docker Compose Orchestration
+* Nginx Reverse Proxy
+* Internal Service Networking
+* Persistent User Storage using Docker Volumes
+
+---
+
+#  System Architecture
+
+Client Browser
+|
+v
+Nginx Reverse Proxy
+|
++-------------------------------+
+| | |
+v v v
 Auth Service Product Service Order Service
 (8001) (8002) (8003)
-
-
-### Architecture Principles:
-- **Loose Coupling** – Each service is independent  
-- **High Cohesion** – Each service has a single responsibility  
-- **Stateless APIs** – Communication via HTTP requests  
+|
+v
+Frontend Service (8004)
 
 ---
 
-## ⚙️ Microservices Breakdown
+## Architecture Principles
 
-### 🔐 Auth Service (Port 8001)
-- Handles user registration and login
-- Stores user credentials
-- Returns user data for session handling
+### Loose Coupling
 
----
+Each service is independently deployable and responsible for a single business domain.
 
-### 📦 Product Service (Port 8002)
-- Manages product catalog
-- Provides product details via API
-- Used by frontend to display items
+### High Cohesion
 
----
+Each microservice owns its own logic and data.
 
-### 🛒 Order Service (Port 8003)
-- Core business logic of the application
-- Handles:
-  - Add to cart
-  - Remove from cart
-  - Update quantity
-  - Checkout process
-  - Order history
-  - Order status tracking
+### Stateless APIs
+
+Communication happens through REST APIs using HTTP requests.
+
+### Service Isolation
+
+Services run in separate Docker containers.
 
 ---
 
-### 🌐 Frontend Service (Port 8004)
-- Built using Django templates + JavaScript
-- Responsible for:
-  - Rendering UI
-  - Calling backend APIs
-  - Managing user session (localStorage)
+#  Technology Stack
+
+## Backend
+
+* Python 3.12
+* Django
+* Django REST Framework
+
+## Authentication
+
+* JWT (SimpleJWT)
+
+## Frontend
+
+* Django Templates
+* HTML
+* CSS
+* JavaScript
+
+## Infrastructure
+
+* Docker
+* Docker Compose
+* Nginx
+
+## Database
+
+* SQLite
+
+## Version Control
+
+* Git
+* GitHub
 
 ---
 
-## 🔄 Application Workflow
+#  Authentication Flow
 
-### 1. User Authentication
-- User registers/logs in via Auth Service
-- User data stored in browser (localStorage)
+### Login
 
----
+Endpoint:
 
-### 2. Product Browsing
-- Frontend fetches products from Product Service
-- Displays product catalog
+POST /api/auth/login/
 
----
-
-### 3. Cart Management
-- User adds items → stored in Order Service (status = `cart`)
-- User can:
-  - Remove items
-  - Update quantity
-  - Select items for checkout
-
----
-
-### 4. Checkout Process
-- Selected cart items are converted to `placed`
-- Order Service updates database
-- Frontend redirects to order page
-
----
-
-### 5. Order Tracking
-- Orders are fetched using: /api/orders/history/<user_id>/
-
-**Status displayed dynamically:**
-- 🟡 Pending  
-- 🔵 Shipped  
-- 🟢 Delivered  
-
----
-
-## 📡 API Design (Sample)
-
-### Create Order / Add to Cart
-POST /api/orders/:
+Request:
 
 ```json
 {
-  "user_id": 1,
-  "product_id": 2,
-  "quantity": 1,
-  "status": "cart"
+  "username": "paul",
+  "password": "Paul@15"
 }
-Checkout: POST /api/checkout/<user_id>/
-Order History: GET /api/orders/history/<user_id>/
+```
 
-Database Design:
+Response:
+
+```json
+{
+  "id": 1,
+  "username": "paul",
+  "role": "customer",
+  "access": "JWT_ACCESS_TOKEN",
+  "refresh": "JWT_REFRESH_TOKEN"
+}
+```
+
+### Using Protected APIs
+
+Header:
+
+```text
+Authorization: Bearer <access_token>
+```
+
+Example:
+
+```bash
+curl http://localhost/api/orders/history/1/ \
+-H "Authorization: Bearer <access_token>"
+```
+
+---
+
+#  Product Workflow
+
+### 1. User Login
+
+User authenticates through Auth Service.
+
+↓
+
+### 2. Product Browsing
+
+Frontend retrieves products from Product Service.
+
+↓
+
+### 3. Add to Cart
+
+Order Service creates a cart item:
+
+```json
+{
+  "product_id": 1,
+  "quantity": 2
+}
+```
+
+Status:
+
+```text
+cart
+```
+
+↓
+
+### 4. Checkout
+
+Selected cart items are converted to:
+
+```text
+placed
+```
+
+↓
+
+### 5. Order History
+
+User views previously ordered items.
+
+Endpoint:
+
+```text
+GET /api/orders/history/<user_id>/
+```
+
+---
+
+#  Cart Lifecycle
+
+```text
+cart
+  ↓
+placed
+  ↓
+shipped
+  ↓
+delivered
+```
+
+Current implementation supports:
+
+* cart
+* placed
+
+Future versions will support:
+
+* shipped
+* delivered
+
+---
+
+#  API Endpoints
+
+## Authentication Service
+
+### Login
+
+```http
+POST /api/auth/login/
+```
+
+### Register
+
+```http
+POST /api/auth/register/
+```
+
+---
+
+## Product Service
+
+### Get Products
+
+```http
+GET /api/products/
+```
+
+### Product Details
+
+```http
+GET /api/products/<id>/
+```
+
+---
+
+## Order Service
+
+### Add To Cart
+
+```http
+POST /api/orders/
+```
+
+### View Cart
+
+```http
+GET /api/cart/
+```
+
+### Update Cart Item
+
+```http
+PUT /api/cart/update/<order_id>/
+```
+
+### Remove Cart Item
+
+```http
+DELETE /api/cart/<order_id>/
+```
+
+### Checkout
+
+```http
+POST /api/checkout/<user_id>/
+```
+
+### Order History
+
+```http
+GET /api/orders/history/<user_id>/
+```
+
+---
+
+#  Database Design
+
+Order Model
+
 | Field      | Description                         |
 | ---------- | ----------------------------------- |
 | id         | Order ID                            |
-| user_id    | User reference                      |
-| product_id | Product reference                   |
-| quantity   | Quantity                            |
+| user_id    | User Reference                      |
+| product_id | Product Reference                   |
+| quantity   | Product Quantity                    |
 | status     | cart / placed / shipped / delivered |
 
-===================================================
-Tech Stack
+---
 
-Backend: Django, Django REST Framework
+#  Docker Deployment
 
-Frontend: HTML, CSS, JavaScript
+## Start All Services
 
-Database: SQLite
+```bash
+docker compose up --build -d
+```
 
-Architecture: Microservices
+---
 
-Communication: REST APIs
-=======================
+## Stop Services
 
-How to Run Locally:          -------Start all services:
-----------------------------------------------------------
+```bash
+docker compose down
+```
 
-# Auth Service
-cd auth-service
-python manage.py runserver 8001
+---
 
-# Product Service
-cd product-service
-python manage.py runserver 8002
+## Restart Service
 
-# Order Service
-cd order-service
-python manage.py runserver 8003
+```bash
+docker compose restart auth-service
+```
 
-# Frontend
-cd frontend
-python manage.py runserver 8004
-==================================
-Challenges Solved
-==================================
-Fixed 404 API errors due to wrong endpoints
+---
 
-Solved undefined user ID issue
+## View Logs
 
-Fixed status mismatch (placed vs ordered)
+```bash
+docker logs auth-service
 
-Implemented cart item deletion API
+docker logs product-service
 
-Built dynamic order tracking UI
+docker logs order-service
+```
 
-Debugged frontend-backend JSON issues:
-====================
+---
 
-## 🌟 What I Learned
+#  Persistent Storage
 
-- Designing scalable microservices systems  
-- Handling API communication between services  
-- Debugging real-world integration issues  
-- Managing state between frontend and backend  
-- Building complete end-to-end applications  
+Auth Service uses a Docker Volume to persist user data.
+
+docker-compose.yml
+
+```yaml
+volumes:
+  - auth_db:/app/data
+```
+
+Benefits:
+
+* User accounts survive container restarts
+* User accounts survive image rebuilds
+* SQLite database remains persistent
+
+Verified through:
+
+```bash
+docker compose down
+docker compose up --build -d
+```
+
+without losing users.
+
+---
+
+#  Testing the System
+
+### Login
+
+```bash
+curl -X POST http://localhost/api/auth/login/ \
+-H "Content-Type: application/json" \
+-d '{
+  "username":"paul",
+  "password":"Paul@15"
+}'
+```
+
+---
+
+### Add Product To Cart
+
+```bash
+curl -X POST http://localhost/api/orders/ \
+-H "Authorization: Bearer <token>" \
+-H "Content-Type: application/json" \
+-d '{
+  "product_id":1,
+  "quantity":2
+}'
+```
+
+---
+
+### Checkout
+
+```bash
+curl -X POST http://localhost/api/checkout/1/ \
+-H "Authorization: Bearer <token>" \
+-H "Content-Type: application/json" \
+-d '{
+  "items":[37]
+}'
+```
+
+---
+
+### Order History
+
+```bash
+curl http://localhost/api/orders/history/1/ \
+-H "Authorization: Bearer <token>"
+```
+
+---
+
+#  Challenges Solved
+
+During development several real-world issues were identified and resolved:
+
+### Authentication
+
+* JWT token validation issues
+* Expired token debugging
+* Cross-service authentication testing
+
+### Docker
+
+* Persistent SQLite storage
+* Docker Volume configuration
+* Container rebuild debugging
+
+### Backend
+
+* API endpoint mismatches
+* Cart status inconsistencies
+* Order lifecycle management
+* Frontend-backend integration bugs
+
+### Infrastructure
+
+* Nginx reverse proxy routing
+* Docker networking
+* Service communication
+
+---
+
+#  What I Learned
+
+This project helped me gain practical experience with:
+
+* Microservices Architecture
+* Django REST Framework
+* JWT Authentication
+* Docker & Docker Compose
+* Nginx Reverse Proxy
+* REST API Design
+* Persistent Storage
+* Backend System Design
+* Service Isolation
+* API Debugging
+* Production-style Development Workflow
+
+---
+
+#  Future Improvements
+
+Planned enhancements:
+
+* PostgreSQL Migration
+* Redis Caching
+* RabbitMQ Event Messaging
+* Kubernetes Deployment
+* Swagger / OpenAPI Documentation
+* Automated Testing
+* GitHub Actions CI/CD Pipeline
+* Prometheus Monitoring
+* Grafana Dashboards
+* AWS Deployment (EC2 + RDS + Nginx)
+* Role-Based Authorization
+* Payment Gateway Integration
+
+---
+
+#  Author
+
+Amit Kumar Yadav
+
+Backend Developer | Python | Django | Django REST Framework | Docker | REST APIs | Microservices
+
+GitHub:
+https://github.com/Amit-NCI/furniture-microservices.git
+
+LinkedIn:
+https://www.linkedin.com/in/amit-kumar-yadav-70117392/

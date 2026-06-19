@@ -1,14 +1,18 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import Order
 
 # ================= CREATE ORDER =================
 class CreateOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     def post(self, request):
         data = request.data
 
         Order.objects.create(
-            user_id=data.get("user_id"),
+            user_id=request.user.id,
             product_id=data.get("product_id"),
             quantity=data.get("quantity", 1),
             status=data.get("status", "cart")
@@ -19,8 +23,14 @@ class CreateOrder(APIView):
 
 # ================= GET USER ORDERS =================
 class GetUserOrders(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, user_id):
-        orders = Order.objects.filter(user_id=user_id).values()
+        orders = Order.objects.filter(
+            user_id=request.user.id
+        ).values()
+
         return Response(list(orders))
 
 
@@ -33,6 +43,8 @@ class CartList(APIView):
 
 # ================= CHECKOUT =================
 class Checkout(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     def post(self, request, user_id):
         selected_ids = request.data.get("items", [])
 
@@ -41,7 +53,7 @@ class Checkout(APIView):
 
         # Get only selected cart items
         cart_items = Order.objects.filter(
-            user_id=user_id,
+            user_id=request.user.id,
             status='cart',
             id__in=selected_ids
         )
@@ -57,9 +69,13 @@ class Checkout(APIView):
 
 # ================= ORDER HISTORY =================
 class OrderHistory(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     def get(self, request, user_id):
         # ✅ show ALL orders except cart
-        orders = Order.objects.filter(user_id=user_id).exclude(status='cart')
+        orders = Order.objects.filter(
+    user_id=request.user.id
+).exclude(status='cart')
         return Response(list(orders.values()))
 
 # ================= CHECKOUT VIEW (OPTIONAL) =================
@@ -80,9 +96,11 @@ class CheckoutView(APIView):
 
 
 class DeleteCartItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     def delete(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, status='cart')
+            order = Order.objects.get(id=order_id,status='cart',user_id=request.user.id)
             order.delete()
             return Response({"message": "Item removed from cart"})
         except Order.DoesNotExist:
@@ -90,9 +108,11 @@ class DeleteCartItem(APIView):
         
 # UPDATE QUANTITY
 class UpdateQuantity(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
     def post(self, request, order_id):
         try:
-            order = Order.objects.get(id=order_id, status='cart')
+            order = Order.objects.get(id=order_id,status='cart',user_id=request.user.id)
 
             action = request.data.get("action")
 
@@ -114,6 +134,9 @@ class UpdateQuantity(APIView):
         
 # ================= REMOVE SELECTED ITEMS =================
 class RemoveSelectedItems(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, user_id):
         item_ids = request.data.get("items", [])
 
@@ -121,7 +144,7 @@ class RemoveSelectedItems(APIView):
             return Response({"error": "No items selected"}, status=400)
 
         deleted, _ = Order.objects.filter(
-            user_id=user_id,
+            user_id=request.user.id,
             status='cart',
             id__in=item_ids
         ).delete()
@@ -130,10 +153,16 @@ class RemoveSelectedItems(APIView):
     
 # ================= CLEAR CART =================
 class ClearCart(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def delete(self, request, user_id):
+
         deleted, _ = Order.objects.filter(
-            user_id=user_id,
+            user_id=request.user.id,
             status='cart'
         ).delete()
 
-        return Response({"message": f"Cart cleared ({deleted} items)"})
+        return Response({
+            "message": f"Cart cleared ({deleted} items)"
+        })

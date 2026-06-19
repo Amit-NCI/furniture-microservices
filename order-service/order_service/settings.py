@@ -8,6 +8,13 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
+
+Admin :   username: admin
+    password: admin@15
+
+This adin user only change the status of products in admin portal.
+ like pendding to shipped or delivered.
+
 """
 
 from pathlib import Path
@@ -20,14 +27,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-_ny-95x!)lfep4eaqm01uw)=t032oy*)k$@c$mwbpp=3hhe$c)'
-
+SECRET_KEY = 'django-insecure-pd^n8hn^th_@91qrv+q)bt02^3u+nq6tfbiq!6#jp5=bedn0+r'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost",
+ALLOWED_HOSTS = [
+    "localhost",
     "127.0.0.1",
-    "192.168.2.6"]
+    "order-service",
+    "nginx"
+]
 
 
 # Application definition
@@ -39,7 +48,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'rest_framework',
+    'rest_framework_simplejwt',
+
     'orders',
     'corsheaders',
 ]
@@ -121,3 +133,8 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 CORS_ALLOW_ALL_ORIGINS = True
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}

@@ -1,15 +1,26 @@
 console.log("✅ app.js loaded");
 
-const AUTH_URL = "http://192.168.2.6:8001";
-const PRODUCT_URL = "http://192.168.2.6:8002";
-const ORDER_URL = "http://192.168.2.6:8003";
+const AUTH_URL = "";
+const PRODUCT_URL = "";
+const ORDER_URL = "";
 
+// ================= JWT AUTH HEADERS =================
+function authHeaders() {
+    const token = localStorage.getItem("access");
+
+    return {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+    };
+}
 
 // ================= REGISTER =================
 function registerUser() {
-    fetch(`${AUTH_URL}/api/auth/register/`, {
+    fetch(`/api/auth/register/`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({
             username: document.getElementById("username").value,
             password: document.getElementById("password").value,
@@ -18,8 +29,9 @@ function registerUser() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.error) alert(data.error);
-        else {
+        if (data.error) {
+            alert(data.error);
+        } else {
             alert(data.message);
             window.location.href = "/login/";
         }
@@ -28,9 +40,11 @@ function registerUser() {
 
 // ================= LOGIN =================
 function loginUser() {
-    fetch(`${AUTH_URL}/api/auth/login/`, {
+    fetch(`/api/auth/login/`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({
             username: document.getElementById("username").value,
             password: document.getElementById("password").value
@@ -38,26 +52,42 @@ function loginUser() {
     })
     .then(res => res.json())
     .then(data => {
-        if (data.error) alert(data.error);
-        else {
-            // 🔥 FIX: ensure id exists
-            data.id = data.id || 1;
 
-            localStorage.setItem("user", JSON.stringify(data));
-            alert("Login successful");
-            window.location.href = "/dashboard/";
+        if (data.error) {
+            alert(data.error);
+            return;
         }
+
+        localStorage.setItem("access", data.access);
+        localStorage.setItem("refresh", data.refresh);
+
+        localStorage.setItem("user", JSON.stringify({
+            id: data.id,
+            username: data.username,
+            role: data.role
+        }));
+
+        alert("Login successful");
+        window.location.href = "/dashboard/";
+    })
+    .catch(error => {
+        console.error(error);
+        alert("Login failed");
     });
 }
 
 // ================= LOGOUT =================
 function logoutUser() {
     localStorage.removeItem("user");
+    localStorage.removeItem("access");
+    localStorage.removeItem("refresh");
+
     window.location.href = "/login/";
 }
 
 // ================= ADD TO CART =================
 function addToCart(productId) {
+
     let user = JSON.parse(localStorage.getItem("user"));
 
     if (!user) {
@@ -65,9 +95,9 @@ function addToCart(productId) {
         return;
     }
 
-    fetch(`${ORDER_URL}/api/orders/`, {
+    fetch(`/api/orders/`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: authHeaders(),
         body: JSON.stringify({
             user_id: user.id,
             product_id: productId,
@@ -80,6 +110,7 @@ function addToCart(productId) {
 
 // ================= BUY NOW =================
 async function buyNow(productId) {
+
     let user = JSON.parse(localStorage.getItem("user"));
 
     if (!user) {
@@ -87,9 +118,9 @@ async function buyNow(productId) {
         return;
     }
 
-    await fetch(`${ORDER_URL}/api/orders/`, {
+    await fetch(`/api/orders/`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: authHeaders(),
         body: JSON.stringify({
             user_id: user.id,
             product_id: productId,
@@ -102,31 +133,9 @@ async function buyNow(productId) {
     window.location.href = "/orders/";
 }
 
-// ================= LOAD PRODUCTS =================
-async function loadProducts() {
-    const res = await fetch(`${PRODUCT_URL}/api/products/`);
-    const products = await res.json();
-
-    let container = document.getElementById("product-list");
-    container.innerHTML = "";
-
-    products.forEach(p => {
-        container.innerHTML += `
-            <div class="product-card">
-                <img src="${p.image_url}" width="200"/>
-                <h3>${p.name}</h3>
-                <p>${p.description}</p>
-                <h4>€${p.price}</h4>
-
-                <button onclick="addToCart(${p.id})">Add to Cart 🛒</button>
-                <button onclick="buyNow(${p.id})">Buy Now ⚡</button>
-            </div>
-        `;
-    });
-}
-
 // ================= CHECKOUT =================
 async function checkout() {
+
     let user = JSON.parse(localStorage.getItem("user"));
 
     if (!user) {
@@ -148,13 +157,12 @@ async function checkout() {
     }
 
     try {
-        const response = await fetch(`${ORDER_URL}/api/checkout/${user.id || 1}/`, {
+
+        const response = await fetch(`/api/checkout/${user.id}/`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
+            headers: authHeaders(),
             body: JSON.stringify({
-                items: selectedItems   // 👈 IMPORTANT
+                items: selectedItems
             })
         });
 
@@ -164,8 +172,6 @@ async function checkout() {
             alert(data.error);
         } else {
             alert(data.message);
-
-            // reload cart → remaining items still there
             window.location.href = "/orders/";
         }
 
@@ -174,9 +180,15 @@ async function checkout() {
     }
 }
 
-// ================= PLACE ORDER (BUY PAGE) =================
+// ================= PLACE ORDER =================
 async function placeOrder() {
+
     let user = JSON.parse(localStorage.getItem("user"));
+
+    if (!user) {
+        alert("Please login first");
+        return;
+    }
 
     const params = new URLSearchParams(window.location.search);
     const productId = params.get("product_id");
@@ -186,9 +198,9 @@ async function placeOrder() {
         return;
     }
 
-    await fetch(`${ORDER_URL}/api/orders/`, {
+    await fetch(`/api/orders/`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: authHeaders(),
         body: JSON.stringify({
             user_id: user.id,
             product_id: productId,
@@ -203,11 +215,12 @@ async function placeOrder() {
 
 // ================= REMOVE FROM CART =================
 async function removeFromCart(orderId) {
-    console.log("Removing item:", orderId);
 
     try {
-        const response = await fetch(`${ORDER_URL}/api/cart/${orderId}/`, {
-            method: "DELETE"
+
+        const response = await fetch(`/api/cart/${orderId}/`, {
+            method: "DELETE",
+            headers: authHeaders()
         });
 
         const data = await response.json();
@@ -223,30 +236,17 @@ async function removeFromCart(orderId) {
     }
 }
 
-// ================= INIT =================
-document.addEventListener("DOMContentLoaded", function () {
-
-    if (typeof loadNavbar === "function") loadNavbar();
-
-    if (window.location.pathname === "/dashboard/") {
-        loadProducts();
-
-        let user = JSON.parse(localStorage.getItem("user"));
-        if (user) {
-            let el = document.getElementById("welcome-user");
-            if (el) el.innerText = "Hello, " + user.username;
-        }
-    }
-});
 // ================= UPDATE QUANTITY =================
 async function updateQuantity(orderId, action) {
+
     try {
-        const response = await fetch(`${ORDER_URL}/api/cart/update/${orderId}/`, {
+
+        const response = await fetch(`/api/cart/update/${orderId}/`, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ action: action })
+            headers: authHeaders(),
+            body: JSON.stringify({
+                action: action
+            })
         });
 
         const data = await response.json();
@@ -254,7 +254,6 @@ async function updateQuantity(orderId, action) {
         if (data.error) {
             alert(data.error);
         } else {
-            // 🔥 reload cart to update UI + total
             loadCart();
         }
 
