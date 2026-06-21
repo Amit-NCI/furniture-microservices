@@ -13,12 +13,14 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 Admin :   username: admin
     password: admin@15
 
+This adin user only approved the staff in admin portal.
 
-
+user paul
+password: Paul@15
 """
 
 from pathlib import Path
-
+from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -32,9 +34,12 @@ SECRET_KEY = 'django-insecure-pd^n8hn^th_@91qrv+q)bt02^3u+nq6tfbiq!6#jp5=bedn0+r
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost",
+ALLOWED_HOSTS = [
+    "localhost",
     "127.0.0.1",
-    "192.168.2.6"]
+    "auth-service",
+    "nginx"
+]
 
 
 # Application definition
@@ -88,7 +93,7 @@ AUTH_USER_MODEL = 'users.User'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': '/app/data/db.sqlite3',
     }
 }
 
@@ -129,3 +134,13 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 CORS_ALLOW_ALL_ORIGINS = True
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+}

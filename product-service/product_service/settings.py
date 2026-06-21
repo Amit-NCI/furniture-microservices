@@ -8,6 +8,13 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
+
+Admin :   username: admin
+    password: admin@15
+
+This adin user only add the products in admin portal.
+
+
 """
 
 from pathlib import Path
@@ -25,9 +32,12 @@ SECRET_KEY = 'django-insecure-h4z(a1o^dyzt0(930#h#@im3%+jf+#qs0!7(mcli-etk#v8#rx
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["localhost",
+ALLOWED_HOSTS = [
+    "localhost",
     "127.0.0.1",
-    "192.168.2.6"]
+    "product-service",
+    "nginx"
+]
 
 
 # Application definition

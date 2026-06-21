@@ -1,11 +1,14 @@
-# users/views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import User
 from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from .models import User
+
 
 class RegisterView(APIView):
+
     def post(self, request):
         data = request.data
 
@@ -13,7 +16,6 @@ class RegisterView(APIView):
         password = data.get('password')
         role = data.get('role', 'customer')
 
-        # 🔴 Validation
         if not username or not password:
             return Response(
                 {"error": "Username and password required"},
@@ -26,14 +28,12 @@ class RegisterView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 🟢 Create user
         user = User.objects.create_user(
             username=username,
             password=password,
             role=role
         )
 
-        # 🔐 Staff needs approval
         if role == 'staff':
             user.is_approved = False
             user.save()
@@ -44,23 +44,26 @@ class RegisterView(APIView):
             "role": user.role,
             "approved": user.is_approved
         }, status=status.HTTP_201_CREATED)
-    from django.contrib.auth import authenticate
+
 
 class LoginView(APIView):
+
     def post(self, request):
         data = request.data
 
         username = data.get('username')
         password = data.get('password')
 
-        # 🔴 Validation
         if not username or not password:
             return Response(
                 {"error": "Username and password required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        user = authenticate(username=username, password=password)
+        user = authenticate(
+            username=username,
+            password=password
+        )
 
         if user is None:
             return Response(
@@ -68,18 +71,19 @@ class LoginView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED
             )
 
-        # 🔐 Staff approval check
         if user.role == 'staff' and not user.is_approved:
             return Response(
                 {"error": "Staff not approved by admin"},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
+
+        refresh = RefreshToken.for_user(user)
+
         return Response({
-    "id": user.id,              # ✅ VERY IMPORTANT
-    "username": user.username,
-    "role": user.role,
-    "message": "Login successful"
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "message": "Login successful"
         })
-        
-    
