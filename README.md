@@ -2,107 +2,200 @@
 
 ##  Project Overview
 
-This project is a containerized e-commerce platform built using a Microservices Architecture.
+This project is a **Dockerized Microservices-Based E-Commerce Platform** built using **Python, Django REST Framework, JWT Authentication, Docker, Docker Compose, and Nginx**.
 
-The application is divided into independent services responsible for authentication, product management, order processing, and frontend rendering. All services communicate through REST APIs and are orchestrated using Docker Compose.
+The application simulates a real-world online furniture store where users can register, browse products, add items to a cart, and place orders.
 
-The project was built to gain hands-on experience with:
-
-* Microservices Architecture
-* Django REST Framework
-* JWT Authentication
-* Docker & Docker Compose
-* Nginx Reverse Proxy
-* Service-to-Service Communication
-* REST API Design
-* Persistent Storage
-* Backend System Design
-
----
-
-#  Key Features
-
-### Authentication Service
-
-* User Registration
-* User Login
-* JWT Authentication
-* Access Token & Refresh Token Generation
-* Role-Based Users
-* User Approval Workflow
-
-### Product Service
-
-* Product Catalog Management
-* Product Listing API
-* Product Detail API
-
-### Order Service
-
-* Add Products to Cart
-* Update Cart Quantity
-* Remove Items from Cart
-* Checkout Selected Items
-* Order History
-* Order Status Tracking
-* JWT Protected Endpoints
-
-### Frontend Service
-
-* Product Browsing
-* Cart Management
-* Checkout Flow
-* Order Tracking UI
-
-### Infrastructure
-
-* Dockerized Microservices
-* Docker Compose Orchestration
-* Nginx Reverse Proxy
-* Internal Service Networking
-* Persistent User Storage using Docker Volumes
+The system is designed using **Microservices Architecture**, where each service is responsible for a specific business domain and communicates through REST APIs.
 
 ---
 
 #  System Architecture
 
-Client Browser
-|
-v
-Nginx Reverse Proxy
-|
-+-------------------------------+
-| | |
-v v v
-Auth Service Product Service Order Service
-(8001) (8002) (8003)
-|
-v
-Frontend Service (8004)
+![System Architecture](screenshots/architecture-diagram.png)
 
 ---
 
-## Architecture Principles
+## 📸 Application Screenshots
 
-### Loose Coupling
+### Login Page
 
-Each service is independently deployable and responsible for a single business domain.
+![Login Page](screenshots/login-page.png)
 
-### High Cohesion
+### Product Catalog
 
-Each microservice owns its own logic and data.
+![Product Catalog](screenshots/products-page.png)
 
-### Stateless APIs
+### Shopping Cart
 
-Communication happens through REST APIs using HTTP requests.
+![Shopping Cart](screenshots/cart-page.png)
 
-### Service Isolation
+### Order History
 
-Services run in separate Docker containers.
+![Order History](screenshots/order-history-page.png)
 
 ---
 
-#  Technology Stack
+# 🎯 Resume Summary
+
+Designed and developed a Dockerized microservices e-commerce platform using Django REST Framework, JWT authentication, Nginx reverse proxy, and Docker Compose.
+
+Implemented authentication, product catalog management, shopping cart functionality, checkout workflow, and order history tracking while applying microservices principles, REST API communication, container orchestration, and persistent storage management.
+
+---
+
+# 🚀 Key Features
+
+## 🔐 Authentication Service
+
+* User Registration
+* User Login
+* JWT Authentication
+* Access Token & Refresh Token Generation
+* User Approval Workflow
+* Role-Based Users
+* Protected API Access
+
+---
+
+## 📦 Product Service
+
+* Product Catalog Management
+* Product Listing API
+* Product Detail API
+* Product Retrieval via REST APIs
+
+---
+
+## 🛒 Order Service
+
+* Add Products to Cart
+* Update Cart Quantity
+* Remove Cart Items
+* Checkout Selected Items
+* Order History Tracking
+* JWT Protected Endpoints
+* Order Status Management
+
+---
+
+## 🌐 Frontend Service
+
+* Product Browsing Interface
+* Cart Management UI
+* Checkout Workflow
+* Order Tracking Interface
+* Django Templates + JavaScript
+
+---
+
+## ⚙️ Infrastructure
+
+* Dockerized Services
+* Docker Compose Orchestration
+* Nginx Reverse Proxy
+* Internal Docker Networking
+* Persistent Storage using Docker Volumes
+* Service Isolation
+
+---
+
+# 🏛️ Microservices Breakdown
+
+## Auth Service (Port 8001)
+
+Responsible for:
+
+* Authentication
+* User Registration
+* JWT Token Generation
+* User Approval Workflow
+* Role Management
+
+### Technologies
+
+* Django
+* Django REST Framework
+* SimpleJWT
+* SQLite
+
+---
+
+## Product Service (Port 8002)
+
+Responsible for:
+
+* Product Catalog
+* Product Listing
+* Product Details
+
+### Technologies
+
+* Django
+* Django REST Framework
+* SQLite
+
+---
+
+## Order Service (Port 8003)
+
+Responsible for:
+
+* Shopping Cart
+* Checkout
+* Order History
+* Order Tracking
+
+### Technologies
+
+* Django
+* Django REST Framework
+* SQLite
+
+---
+
+## Frontend Service (Port 8004)
+
+Responsible for:
+
+* Rendering User Interface
+* Calling Backend APIs
+* Managing User Session
+
+### Technologies
+
+* Django Templates
+* HTML
+* CSS
+* JavaScript
+
+---
+
+# 🧠 Architecture Principles
+
+## Loose Coupling
+
+Each service is independently deployable and owns a single business domain.
+
+## High Cohesion
+
+Business logic is isolated within its respective service.
+
+## Stateless APIs
+
+Services communicate through REST APIs.
+
+## Service Isolation
+
+Every service runs inside its own Docker container.
+
+## Container Orchestration
+
+Docker Compose manages networking and service startup.
+
+---
+
+# 🛠️ Technology Stack
 
 ## Backend
 
@@ -138,13 +231,13 @@ Services run in separate Docker containers.
 
 ---
 
-#  Authentication Flow
+# 🔐 Authentication Flow
 
-### Login
+## Login Endpoint
 
-Endpoint:
-
+```http
 POST /api/auth/login/
+```
 
 Request:
 
@@ -167,7 +260,9 @@ Response:
 }
 ```
 
-### Using Protected APIs
+---
+
+## Protected APIs
 
 Header:
 
@@ -184,23 +279,23 @@ curl http://localhost/api/orders/history/1/ \
 
 ---
 
-#  Product Workflow
+# 🔄 Application Workflow
 
-### 1. User Login
+## 1. User Login
 
-User authenticates through Auth Service.
+User authenticates through the Auth Service.
 
 ↓
 
-### 2. Product Browsing
+## 2. Browse Products
 
 Frontend retrieves products from Product Service.
 
 ↓
 
-### 3. Add to Cart
+## 3. Add To Cart
 
-Order Service creates a cart item:
+Order Service stores products with:
 
 ```json
 {
@@ -217,9 +312,9 @@ cart
 
 ↓
 
-### 4. Checkout
+## 4. Checkout
 
-Selected cart items are converted to:
+Selected cart items become:
 
 ```text
 placed
@@ -227,19 +322,19 @@ placed
 
 ↓
 
-### 5. Order History
+## 5. Order History
 
-User views previously ordered items.
+Users retrieve previously placed orders.
 
 Endpoint:
 
-```text
+```http
 GET /api/orders/history/<user_id>/
 ```
 
 ---
 
-#  Cart Lifecycle
+# 🛒 Cart Lifecycle
 
 ```text
 cart
@@ -251,32 +346,32 @@ shipped
 delivered
 ```
 
-Current implementation supports:
+### Current Implementation
 
 * cart
 * placed
 
-Future versions will support:
+### Planned
 
 * shipped
 * delivered
 
 ---
 
-#  API Endpoints
+# 📡 API Endpoints
 
 ## Authentication Service
-
-### Login
-
-```http
-POST /api/auth/login/
-```
 
 ### Register
 
 ```http
 POST /api/auth/register/
+```
+
+### Login
+
+```http
+POST /api/auth/login/
 ```
 
 ---
@@ -337,9 +432,9 @@ GET /api/orders/history/<user_id>/
 
 ---
 
-#  Database Design
+# 🗄️ Database Design
 
-Order Model
+## Order Model
 
 | Field      | Description                         |
 | ---------- | ----------------------------------- |
@@ -351,9 +446,9 @@ Order Model
 
 ---
 
-#  Docker Deployment
+# 🐳 Docker Deployment
 
-## Start All Services
+## Build & Start
 
 ```bash
 docker compose up --build -d
@@ -389,11 +484,11 @@ docker logs order-service
 
 ---
 
-#  Persistent Storage
+# 💾 Persistent Storage
 
-Auth Service uses a Docker Volume to persist user data.
+The Auth Service uses Docker Volumes to persist user data.
 
-docker-compose.yml
+docker-compose.yml:
 
 ```yaml
 volumes:
@@ -410,6 +505,7 @@ Verified through:
 
 ```bash
 docker compose down
+
 docker compose up --build -d
 ```
 
@@ -417,9 +513,9 @@ without losing users.
 
 ---
 
-#  Testing the System
+# 🧪 Testing the System
 
-### Login
+## Login
 
 ```bash
 curl -X POST http://localhost/api/auth/login/ \
@@ -432,7 +528,7 @@ curl -X POST http://localhost/api/auth/login/ \
 
 ---
 
-### Add Product To Cart
+## Add Product To Cart
 
 ```bash
 curl -X POST http://localhost/api/orders/ \
@@ -446,7 +542,7 @@ curl -X POST http://localhost/api/orders/ \
 
 ---
 
-### Checkout
+## Checkout
 
 ```bash
 curl -X POST http://localhost/api/checkout/1/ \
@@ -459,7 +555,7 @@ curl -X POST http://localhost/api/checkout/1/ \
 
 ---
 
-### Order History
+## Order History
 
 ```bash
 curl http://localhost/api/orders/history/1/ \
@@ -468,82 +564,111 @@ curl http://localhost/api/orders/history/1/ \
 
 ---
 
-#  Challenges Solved
+# 📊 Project Metrics
 
-During development several real-world issues were identified and resolved:
-
-### Authentication
-
-* JWT token validation issues
-* Expired token debugging
-* Cross-service authentication testing
-
-### Docker
-
-* Persistent SQLite storage
-* Docker Volume configuration
-* Container rebuild debugging
-
-### Backend
-
-* API endpoint mismatches
-* Cart status inconsistencies
-* Order lifecycle management
-* Frontend-backend integration bugs
-
-### Infrastructure
-
-* Nginx reverse proxy routing
-* Docker networking
-* Service communication
+* 4 Independent Services
+* JWT Authentication
+* Dockerized Deployment
+* Nginx Reverse Proxy
+* Persistent Storage using Docker Volumes
+* End-to-End Cart & Checkout Workflow
+* REST API Based Communication
+* Microservices Architecture
 
 ---
 
-#  What I Learned
+# 🐞 Challenges Solved
 
-This project helped me gain practical experience with:
+### Authentication
 
-* Microservices Architecture
+* JWT Token Validation Issues
+* Expired Token Debugging
+* Cross-Service Authentication Testing
+
+### Docker
+
+* Persistent SQLite Storage
+* Docker Volume Configuration
+* Container Rebuild Debugging
+
+### Backend
+
+* API Endpoint Mismatches
+* Cart Status Inconsistencies
+* Order Lifecycle Management
+* Frontend-Backend Integration Bugs
+
+### Infrastructure
+
+* Nginx Reverse Proxy Routing
+* Docker Networking
+* Service Communication
+
+---
+
+# 📚 Skills Demonstrated
+
+* Python
+* Django
 * Django REST Framework
+* REST API Development
 * JWT Authentication
-* Docker & Docker Compose
-* Nginx Reverse Proxy
-* REST API Design
-* Persistent Storage
-* Backend System Design
-* Service Isolation
-* API Debugging
-* Production-style Development Workflow
+* Docker
+* Docker Compose
+* Nginx
+* SQLite
+* Microservices Architecture
+* Service-to-Service Communication
+* Backend Development
+* System Design
+* API Testing
+* Distributed System Debugging
 
 ---
 
 #  Future Improvements
 
-Planned enhancements:
+## Infrastructure
 
 * PostgreSQL Migration
 * Redis Caching
 * RabbitMQ Event Messaging
 * Kubernetes Deployment
-* Swagger / OpenAPI Documentation
+
+## DevOps
+
+* GitHub Actions CI/CD
 * Automated Testing
-* GitHub Actions CI/CD Pipeline
-* Prometheus Monitoring
+* Docker Image Security Scanning
+
+## Monitoring
+
+* Prometheus Metrics
 * Grafana Dashboards
-* AWS Deployment (EC2 + RDS + Nginx)
-* Role-Based Authorization
+
+## Cloud
+
+* AWS EC2 Deployment
+* AWS RDS
+* S3 Storage
+
+## Business Features
+
 * Payment Gateway Integration
+* Role-Based Authorization
+* Product Search & Filtering
+* Inventory Management
 
 ---
 
 #  Author
 
-Amit Kumar Yadav
+**Amit Kumar Yadav**
 
 Backend Developer | Python | Django | Django REST Framework | Docker | REST APIs | Microservices
 
 GitHub:
-https://github.com/Amit-NCI/furniture-microservices.git
+https://github.com/Amit-NCI/furniture-microservices
 
 LinkedIn:
 https://www.linkedin.com/in/amit-kumar-yadav-70117392/
