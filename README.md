@@ -16,7 +16,7 @@ The system is designed using **Microservices Architecture**, where each service 
 
 ---
 
-## 📸 Application Screenshots
+##  Application Screenshots
 
 ### Login Page
 
@@ -36,7 +36,7 @@ The system is designed using **Microservices Architecture**, where each service 
 
 ---
 
-# 🎯 Resume Summary
+# Summary
 
 Designed and developed a Dockerized microservices e-commerce platform using Django REST Framework, JWT authentication, Nginx reverse proxy, and Docker Compose.
 
@@ -44,9 +44,9 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-# 🚀 Key Features
+#  Key Features
 
-## 🔐 Authentication Service
+##  Authentication Service
 
 * User Registration
 * User Login
@@ -58,7 +58,7 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-## 📦 Product Service
+## Product Service
 
 * Product Catalog Management
 * Product Listing API
@@ -67,7 +67,7 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-## 🛒 Order Service
+## Order Service
 
 * Add Products to Cart
 * Update Cart Quantity
@@ -79,7 +79,7 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-## 🌐 Frontend Service
+## Frontend Service
 
 * Product Browsing Interface
 * Cart Management UI
@@ -89,7 +89,7 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-## ⚙️ Infrastructure
+## Infrastructure
 
 * Dockerized Services
 * Docker Compose Orchestration
@@ -100,7 +100,7 @@ Implemented authentication, product catalog management, shopping cart functional
 
 ---
 
-# 🏛️ Microservices Breakdown
+# Microservices Breakdown
 
 ## Auth Service (Port 8001)
 
@@ -171,7 +171,7 @@ Responsible for:
 
 ---
 
-# 🧠 Architecture Principles
+# Architecture Principles
 
 ## Loose Coupling
 
@@ -195,7 +195,7 @@ Docker Compose manages networking and service startup.
 
 ---
 
-# 🛠️ Technology Stack
+# Technology Stack
 
 ## Backend
 
@@ -231,7 +231,7 @@ Docker Compose manages networking and service startup.
 
 ---
 
-# 🔐 Authentication Flow
+# Authentication Flow
 
 ## Login Endpoint
 
@@ -279,7 +279,7 @@ curl http://localhost/api/orders/history/1/ \
 
 ---
 
-# 🔄 Application Workflow
+#  Application Workflow
 
 ## 1. User Login
 
@@ -358,7 +358,7 @@ delivered
 
 ---
 
-# 📡 API Endpoints
+#  API Endpoints
 
 ## Authentication Service
 
@@ -432,7 +432,7 @@ GET /api/orders/history/<user_id>/
 
 ---
 
-# 🗄️ Database Design
+#  Database Design
 
 ## Order Model
 
@@ -446,7 +446,7 @@ GET /api/orders/history/<user_id>/
 
 ---
 
-# 🐳 Docker Deployment
+#  Docker Deployment
 
 ## Build & Start
 
@@ -484,7 +484,7 @@ docker logs order-service
 
 ---
 
-# 💾 Persistent Storage
+#  Persistent Storage
 
 The Auth Service uses Docker Volumes to persist user data.
 
@@ -513,7 +513,7 @@ without losing users.
 
 ---
 
-# 🧪 Testing the System
+#  Testing the System
 
 ## Login
 
@@ -564,7 +564,7 @@ curl http://localhost/api/orders/history/1/ \
 
 ---
 
-# 📊 Project Metrics
+#  Project Metrics
 
 * 4 Independent Services
 * JWT Authentication
@@ -577,7 +577,7 @@ curl http://localhost/api/orders/history/1/ \
 
 ---
 
-# 🐞 Challenges Solved
+#  Challenges Solved
 
 ### Authentication
 
