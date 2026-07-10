@@ -1,13 +1,19 @@
-FROM python:3.12-slim
-
+FROM python:3.12-slim AS builder
 WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=builder /install /usr/local
+
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 COPY . .
+RUN chown -R appuser:appgroup /app
 
-RUN pip install --no-cache-dir -r requirements.txt
-
-WORKDIR /app
+USER appuser
 
 EXPOSE 8004
 
-CMD ["sh", "-c", "python manage.py migrate && python manage.py runserver 0.0.0.0:8004"]
+CMD ["sh", "-c", "python manage.py migrate --noinput && gunicorn frontend_project.wsgi:application --bind 0.0.0.0:8004 --workers 2 --worker-tmp-dir /tmp"]

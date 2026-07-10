@@ -1,10 +1,18 @@
+# Environment files — never commit these
+.env
+**/.env
+
+# Keep example files — these are safe to commit
+!.env.example
+!**/.env.example
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 venv/
-.env
+.venv/
 
 # Django
 db.sqlite3
