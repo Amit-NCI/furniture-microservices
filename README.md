@@ -1,674 +1,268 @@
-#  Furniture E-Commerce Platform (Microservices Architecture)
+# Furniture E-Commerce Platform — Microservices Architecture
 
-##  Project Overview
+A production-hardened, Dockerized microservices e-commerce platform built with **Python, Django REST Framework, JWT Authentication, Gunicorn, Nginx, and Docker Compose**.
 
-This project is a **Dockerized Microservices-Based E-Commerce Platform** built using **Python, Django REST Framework, JWT Authentication, Docker, Docker Compose, and Nginx**.
+This project is being actively developed in phases, moving from a working prototype toward a production-grade system with PostgreSQL, RabbitMQ event-driven messaging, CI/CD, Prometheus/Grafana observability, and AWS deployment via Terraform.
 
-The application simulates a real-world online furniture store where users can register, browse products, add items to a cart, and place orders.
-
-The system is designed using **Microservices Architecture**, where each service is responsible for a specific business domain and communicates through REST APIs.
+> **Active development** — commits are ongoing. See the [Roadmap](#roadmap) section for what's built and what's next.
 
 ---
 
-#  System Architecture
-
-![System Architecture](screenshots/architecture-diagram.png)
-
----
-
-##  Application Screenshots
-
-### Login Page
-
-![Login Page](screenshots/login-page.png)
-
-### Product Catalog
-
-![Product Catalog](screenshots/products-page.png)
-
-### Shopping Cart
-
-![Shopping Cart](screenshots/cart-page.png)
-
-### Order History
-
-![Order History](screenshots/order-history-page.png)
-
----
-
-# Summary
-
-Designed and developed a Dockerized microservices e-commerce platform using Django REST Framework, JWT authentication, Nginx reverse proxy, and Docker Compose.
-
-Implemented authentication, product catalog management, shopping cart functionality, checkout workflow, and order history tracking while applying microservices principles, REST API communication, container orchestration, and persistent storage management.
-
----
-
-#  Key Features
-
-##  Authentication Service
-
-* User Registration
-* User Login
-* JWT Authentication
-* Access Token & Refresh Token Generation
-* User Approval Workflow
-* Role-Based Users
-* Protected API Access
-
----
-
-## Product Service
-
-* Product Catalog Management
-* Product Listing API
-* Product Detail API
-* Product Retrieval via REST APIs
-
----
-
-## Order Service
-
-* Add Products to Cart
-* Update Cart Quantity
-* Remove Cart Items
-* Checkout Selected Items
-* Order History Tracking
-* JWT Protected Endpoints
-* Order Status Management
-
----
-
-## Frontend Service
-
-* Product Browsing Interface
-* Cart Management UI
-* Checkout Workflow
-* Order Tracking Interface
-* Django Templates + JavaScript
-
----
-
-## Infrastructure
-
-* Dockerized Services
-* Docker Compose Orchestration
-* Nginx Reverse Proxy
-* Internal Docker Networking
-* Persistent Storage using Docker Volumes
-* Service Isolation
-
----
-
-# Microservices Breakdown
-
-## Auth Service (Port 8001)
-
-Responsible for:
-
-* Authentication
-* User Registration
-* JWT Token Generation
-* User Approval Workflow
-* Role Management
-
-### Technologies
-
-* Django
-* Django REST Framework
-* SimpleJWT
-* SQLite
-
----
-
-## Product Service (Port 8002)
-
-Responsible for:
-
-* Product Catalog
-* Product Listing
-* Product Details
-
-### Technologies
-
-* Django
-* Django REST Framework
-* SQLite
-
----
-
-## Order Service (Port 8003)
-
-Responsible for:
-
-* Shopping Cart
-* Checkout
-* Order History
-* Order Tracking
-
-### Technologies
-
-* Django
-* Django REST Framework
-* SQLite
-
----
-
-## Frontend Service (Port 8004)
-
-Responsible for:
-
-* Rendering User Interface
-* Calling Backend APIs
-* Managing User Session
-
-### Technologies
-
-* Django Templates
-* HTML
-* CSS
-* JavaScript
-
----
-
-# Architecture Principles
-
-## Loose Coupling
-
-Each service is independently deployable and owns a single business domain.
-
-## High Cohesion
-
-Business logic is isolated within its respective service.
-
-## Stateless APIs
-
-Services communicate through REST APIs.
-
-## Service Isolation
-
-Every service runs inside its own Docker container.
-
-## Container Orchestration
-
-Docker Compose manages networking and service startup.
-
----
-
-# Technology Stack
-
-## Backend
-
-* Python 3.12
-* Django
-* Django REST Framework
-
-## Authentication
-
-* JWT (SimpleJWT)
-
-## Frontend
-
-* Django Templates
-* HTML
-* CSS
-* JavaScript
-
-## Infrastructure
-
-* Docker
-* Docker Compose
-* Nginx
-
-## Database
-
-* SQLite
-
-## Version Control
-
-* Git
-* GitHub
-
----
-
-# Authentication Flow
-
-## Login Endpoint
-
-```http
-POST /api/auth/login/
+## Architecture
+
+```
+Browser
+   │
+   ▼
+Nginx (port 80) ── single entry point, routes by path
+   │
+   ├── /              ──► Frontend Service  (port 8004)  Django Templates + JS
+   ├── /api/auth/     ──► Auth Service      (port 8001)  JWT login/register
+   ├── /api/products/ ──► Product Service   (port 8002)  Catalog + staff CRUD
+   └── /api/orders/   ──► Order Service     (port 8003)  Cart + checkout
+       /api/cart/
+       /api/checkout/
 ```
 
-Request:
+**Key architectural decision:** The browser calls backend services directly via `fetch()` through Nginx — the Frontend service only serves HTML/CSS/JS. There is no server-side API proxying through Frontend. This keeps the frontend stateless and the API surface clean.
 
-```json
-{
-  "username": "paul",
-  "password": "Paul@15"
-}
+**JWT verification:** Order and Product services verify tokens locally using a shared signing key — no network call to Auth service required. This is stateless by design; moving to RS256 (asymmetric) is planned for Phase 3.
+
+Each service has its own isolated SQLite database (PostgreSQL migration is Phase 2).
+
+---
+
+## Services
+
+| Service | Port | Responsibility | Auth Required |
+|---|---|---|---|
+| Auth | 8001 | Registration, login, JWT issuance, role management | No (public endpoints) |
+| Product | 8002 | Product catalog, staff CRUD | GET: any authenticated user; POST/PUT/DELETE: staff only |
+| Order | 8003 | Cart, checkout, order history | Yes — JWT on all endpoints |
+| Frontend | 8004 | Serves HTML/CSS/JS pages | No |
+| Nginx | 80 | Reverse proxy, single entry point | — |
+
+---
+
+## Phase 1 — Production Hardening ✅ Complete
+
+The v1 prototype had real security and operational problems. Phase 1 fixed them before adding any new features.
+
+**What was wrong:**
+- `DEBUG = True` in all services — would leak stack traces in production
+- `SECRET_KEY` hardcoded and committed — and shared between Auth and Order services
+- `CORS_ALLOW_ALL_ORIGINS = True` — wide open
+- `python manage.py runserver` in Docker containers — single-threaded dev server, not suitable for any real load
+- Containers running as root
+- Internal service ports exposed directly on the host — bypassing Nginx
+- `psycopg2-binary` in every `requirements.txt` despite the project using SQLite
+
+**What was fixed:**
+- All secrets moved to `.env` files loaded via `python-decouple` — never committed, per-service
+- Unique `SECRET_KEY` per service — Auth and Order no longer share a key
+- Dedicated `JWT_SIGNING_KEY` for token signing/verification, separate from Django's secret
+- `DEBUG=False`, `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` restricted per service
+- `runserver` replaced with **Gunicorn** (2 workers) in all four services
+- Multi-stage Dockerfiles — builder stage installs dependencies, runtime stage is lean
+- Containers run as non-root `appuser`
+- Internal service ports removed from host exposure — only `nginx:80` is reachable externally
+- Custom `JWTTokenAuthentication` in Product and Order services — reads user claims from token payload directly, no cross-service database lookup
+- `IsStaffUser` and `IsCustomerOrStaff` permission classes in Product service
+- `.env.example` files committed for all services so anyone cloning knows what variables are needed
+
+---
+
+## Roadmap
+
+| Phase | Status | What it adds |
+|---|---|---|
+| 1 — Production hardening | ✅ Complete | Secrets, gunicorn, non-root containers, JWT token-only auth |
+| 2 — PostgreSQL | 🔄 In progress | One Postgres DB per service, proper migrations, Order model improvements |
+| 3 — Event-driven messaging | ⏳ Planned | RabbitMQ: Order service publishes `order.placed`, Product service consumes and decrements stock |
+| 4 — Testing | ⏳ Planned | pytest, pylint, SonarQube quality gate, 80%+ coverage |
+| 5 — CI/CD | ⏳ Planned | GitHub Actions: lint → test → scan → build → push to ECR → deploy |
+| 6 — AWS + Terraform | ⏳ Planned | VPC, ECS Fargate, RDS, ECR, Secrets Manager — all provisioned via Terraform |
+| 7 — Observability | ⏳ Planned | Prometheus metrics endpoint per service, Grafana dashboard |
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- Docker Desktop
+- Python 3.12 (for local key generation only)
+
+### Setup
+
+**1. Clone the repo:**
+```bash
+git clone https://github.com/Amit-NCI/furniture-microservices.git
+cd furniture-microservices
 ```
 
-Response:
+**2. Create `.env` files for each service** (see `.env.example` in each service folder):
 
-```json
-{
-  "id": 1,
-  "username": "paul",
-  "role": "customer",
-  "access": "JWT_ACCESS_TOKEN",
-  "refresh": "JWT_REFRESH_TOKEN"
-}
+Generate a unique secret key for each service:
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+Run it 5 times — one `SECRET_KEY` per service, one shared `JWT_SIGNING_KEY` for auth/order/product.
+
+**`auth-service/.env`**
+```
+SECRET_KEY=your-unique-key-here
+DEBUG=False
+ALLOWED_HOSTS=localhost,127.0.0.1,auth-service,nginx
+CORS_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
+JWT_SIGNING_KEY=your-shared-jwt-key-here
+```
+
+**`order-service/.env`** and **`product-service/.env`** follow the same pattern — include `JWT_SIGNING_KEY` (must match auth-service).
+
+**`frontend/.env`** — same pattern, no `JWT_SIGNING_KEY` needed.
+
+**3. Build and start:**
+```bash
+docker compose up --build
+```
+
+**4. Create a user:**
+```bash
+docker exec -it auth-service sh -c "cd auth_service && python manage.py shell -c \"
+from users.models import User
+User.objects.create_user(username='paul', password='Paul@15', role='customer', is_approved=True)
+print('User created')
+\""
+```
+
+**5. Test the system:**
+```bash
+# Login and capture token
+TOKEN=$(curl -s -X POST http://localhost/api/auth/login/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "paul", "password": "Paul@15"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access'])")
+
+# Browse products
+curl -s http://localhost/api/products/ -H "Authorization: Bearer $TOKEN"
+
+# Add to cart
+curl -s -X POST http://localhost/api/orders/ \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": 1, "quantity": 2}'
+
+# Order history
+curl -s http://localhost/api/orders/history/2/ -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
-## Protected APIs
+## API Reference
 
-Header:
+### Auth Service
 
-```text
-Authorization: Bearer <access_token>
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/register/` | No | Register new user |
+| POST | `/api/auth/login/` | No | Login, returns JWT access + refresh tokens |
+
+### Product Service
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/api/products/` | Customer or Staff | List all products |
+| GET | `/api/products/<id>/` | No | Product detail |
+| POST | `/api/products/` | Staff only | Create product |
+| PUT | `/api/products/update/<id>/` | Staff only | Update product |
+| DELETE | `/api/products/delete/<id>/` | Staff only | Delete product |
+
+### Order Service
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/orders/` | Yes | Add item to cart |
+| GET | `/api/cart/` | Yes | View cart |
+| POST | `/api/cart/update/<id>/` | Yes | Update quantity |
+| DELETE | `/api/cart/<id>/` | Yes | Remove cart item |
+| POST | `/api/cart/remove-selected/<user_id>/` | Yes | Remove selected items |
+| DELETE | `/api/cart/clear/<user_id>/` | Yes | Clear entire cart |
+| POST | `/api/checkout/<user_id>/` | Yes | Checkout selected items |
+| GET | `/api/orders/history/<user_id>/` | Yes | Order history |
+
+---
+
+## Order Status Lifecycle
+
+```
+cart → placed → shipped → delivered
 ```
 
-Example:
+`cart` and `placed` are implemented. `shipped` and `delivered` are planned for Phase 3 when order events drive status updates.
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Language | Python 3.12 |
+| Framework | Django 6, Django REST Framework |
+| Authentication | SimpleJWT (HS256 → RS256 in Phase 3) |
+| Server | Gunicorn |
+| Proxy | Nginx |
+| Containers | Docker, Docker Compose |
+| Database | SQLite (→ PostgreSQL in Phase 2) |
+| Secrets | python-decouple + .env files |
+| Version Control | Git, GitHub |
+
+**Coming in later phases:** PostgreSQL, RabbitMQ, pytest, pylint, SonarQube, GitHub Actions, Terraform, AWS ECS/Fargate, RDS, ECR, Prometheus, Grafana
+
+---
+
+## Docker Commands
 
 ```bash
-curl http://localhost/api/orders/history/1/ \
--H "Authorization: Bearer <access_token>"
-```
+# Build and start all services
+docker compose up --build
 
----
-
-#  Application Workflow
-
-## 1. User Login
-
-User authenticates through the Auth Service.
-
-↓
-
-## 2. Browse Products
-
-Frontend retrieves products from Product Service.
-
-↓
-
-## 3. Add To Cart
-
-Order Service stores products with:
-
-```json
-{
-  "product_id": 1,
-  "quantity": 2
-}
-```
-
-Status:
-
-```text
-cart
-```
-
-↓
-
-## 4. Checkout
-
-Selected cart items become:
-
-```text
-placed
-```
-
-↓
-
-## 5. Order History
-
-Users retrieve previously placed orders.
-
-Endpoint:
-
-```http
-GET /api/orders/history/<user_id>/
-```
-
----
-
-# 🛒 Cart Lifecycle
-
-```text
-cart
-  ↓
-placed
-  ↓
-shipped
-  ↓
-delivered
-```
-
-### Current Implementation
-
-* cart
-* placed
-
-### Planned
-
-* shipped
-* delivered
-
----
-
-#  API Endpoints
-
-## Authentication Service
-
-### Register
-
-```http
-POST /api/auth/register/
-```
-
-### Login
-
-```http
-POST /api/auth/login/
-```
-
----
-
-## Product Service
-
-### Get Products
-
-```http
-GET /api/products/
-```
-
-### Product Details
-
-```http
-GET /api/products/<id>/
-```
-
----
-
-## Order Service
-
-### Add To Cart
-
-```http
-POST /api/orders/
-```
-
-### View Cart
-
-```http
-GET /api/cart/
-```
-
-### Update Cart Item
-
-```http
-PUT /api/cart/update/<order_id>/
-```
-
-### Remove Cart Item
-
-```http
-DELETE /api/cart/<order_id>/
-```
-
-### Checkout
-
-```http
-POST /api/checkout/<user_id>/
-```
-
-### Order History
-
-```http
-GET /api/orders/history/<user_id>/
-```
-
----
-
-#  Database Design
-
-## Order Model
-
-| Field      | Description                         |
-| ---------- | ----------------------------------- |
-| id         | Order ID                            |
-| user_id    | User Reference                      |
-| product_id | Product Reference                   |
-| quantity   | Product Quantity                    |
-| status     | cart / placed / shipped / delivered |
-
----
-
-#  Docker Deployment
-
-## Build & Start
-
-```bash
+# Run in background
 docker compose up --build -d
-```
 
----
-
-## Stop Services
-
-```bash
+# Stop all services
 docker compose down
-```
 
----
+# View logs for a specific service
+docker logs auth-service
+docker logs product-service
+docker logs order-service
+docker logs frontend
 
-## Restart Service
-
-```bash
+# Restart a single service
 docker compose restart auth-service
 ```
 
 ---
 
-## View Logs
+## Security Notes
 
-```bash
-docker logs auth-service
-
-docker logs product-service
-
-docker logs order-service
-```
-
----
-
-#  Persistent Storage
-
-The Auth Service uses Docker Volumes to persist user data.
-
-docker-compose.yml:
-
-```yaml
-volumes:
-  - auth_db:/app/data
-```
-
-Benefits:
-
-* User accounts survive container restarts
-* User accounts survive image rebuilds
-* SQLite database remains persistent
-
-Verified through:
-
-```bash
-docker compose down
-
-docker compose up --build -d
-```
-
-without losing users.
+- `.env` files are gitignored — never committed
+- Each service has a unique `SECRET_KEY`
+- JWT signing uses a dedicated `JWT_SIGNING_KEY` separate from Django's secret
+- Product and Order services verify JWTs without any database lookup (token payload only)
+- Only Nginx on port 80 is exposed to the host — internal services are network-isolated
+- All containers run as non-root `appuser`
+- `DEBUG=False` in all services
 
 ---
 
-#  Testing the System
-
-## Login
-
-```bash
-curl -X POST http://localhost/api/auth/login/ \
--H "Content-Type: application/json" \
--d '{
-  "username":"paul",
-  "password":"Paul@15"
-}'
-```
-
----
-
-## Add Product To Cart
-
-```bash
-curl -X POST http://localhost/api/orders/ \
--H "Authorization: Bearer <token>" \
--H "Content-Type: application/json" \
--d '{
-  "product_id":1,
-  "quantity":2
-}'
-```
-
----
-
-## Checkout
-
-```bash
-curl -X POST http://localhost/api/checkout/1/ \
--H "Authorization: Bearer <token>" \
--H "Content-Type: application/json" \
--d '{
-  "items":[37]
-}'
-```
-
----
-
-## Order History
-
-```bash
-curl http://localhost/api/orders/history/1/ \
--H "Authorization: Bearer <token>"
-```
-
----
-
-#  Project Metrics
-
-* 4 Independent Services
-* JWT Authentication
-* Dockerized Deployment
-* Nginx Reverse Proxy
-* Persistent Storage using Docker Volumes
-* End-to-End Cart & Checkout Workflow
-* REST API Based Communication
-* Microservices Architecture
-
----
-
-#  Challenges Solved
-
-### Authentication
-
-* JWT Token Validation Issues
-* Expired Token Debugging
-* Cross-Service Authentication Testing
-
-### Docker
-
-* Persistent SQLite Storage
-* Docker Volume Configuration
-* Container Rebuild Debugging
-
-### Backend
-
-* API Endpoint Mismatches
-* Cart Status Inconsistencies
-* Order Lifecycle Management
-* Frontend-Backend Integration Bugs
-
-### Infrastructure
-
-* Nginx Reverse Proxy Routing
-* Docker Networking
-* Service Communication
-
----
-
-# 📚 Skills Demonstrated
-
-* Python
-* Django
-* Django REST Framework
-* REST API Development
-* JWT Authentication
-* Docker
-* Docker Compose
-* Nginx
-* SQLite
-* Microservices Architecture
-* Service-to-Service Communication
-* Backend Development
-* System Design
-* API Testing
-* Distributed System Debugging
-
----
-
-#  Future Improvements
-
-## Infrastructure
-
-* PostgreSQL Migration
-* Redis Caching
-* RabbitMQ Event Messaging
-* Kubernetes Deployment
-
-## DevOps
-
-* GitHub Actions CI/CD
-* Automated Testing
-* Docker Image Security Scanning
-
-## Monitoring
-
-* Prometheus Metrics
-* Grafana Dashboards
-
-## Cloud
-
-* AWS EC2 Deployment
-* AWS RDS
-* S3 Storage
-
-## Business Features
-
-* Payment Gateway Integration
-* Role-Based Authorization
-* Product Search & Filtering
-* Inventory Management
-
----
-
-#  Author
+## Author
 
 **Amit Kumar Yadav**
+MSc Cloud Computing — National College of Ireland, Dublin
 
-Backend Developer | Python | Django | Django REST Framework | Docker | REST APIs | Microservices
+Cloud & DevOps Engineer | Python · Django · Docker · Kubernetes · AWS · Terraform · Microservices
 
-GitHub:
-https://github.com/Amit-NCI/furniture-microservices
-
-LinkedIn:
-https://www.linkedin.com/in/amit-kumar-yadav-70117392/
+- GitHub: [github.com/Amit-NCI](https://github.com/Amit-NCI)
+- LinkedIn: [linkedin.com/in/amit-kumar-yadav-70117392](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)
