@@ -5,3 +5,4 @@ djangorestframework-simplejwt
 gunicorn
 python-decouple
 psycopg2-binary
+pika

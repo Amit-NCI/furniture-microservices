@@ -61,6 +61,23 @@ services:
   # ============================================================
   # Application Services
   # ============================================================
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "15672:15672"
+    networks:
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 
   auth-service:
     build: ./auth-service
@@ -74,6 +91,20 @@ services:
       - microservices-network
     restart: unless-stopped
 
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    env_file:
+      - ./order-service/.env
+    depends_on:
+      order-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - microservices-network
+    restart: unless-stopped
+
   product-service:
     build: ./product-service
     container_name: product-service
@@ -82,17 +113,7 @@ services:
     depends_on:
       product-db:
         condition: service_healthy
-    networks:
-      - microservices-network
-    restart: unless-stopped
-
-  order-service:
-    build: ./order-service
-    container_name: order-service
-    env_file:
-      - ./order-service/.env
-    depends_on:
-      order-db:
+      rabbitmq:
         condition: service_healthy
     networks:
       - microservices-network

@@ -47,11 +47,14 @@ class CartList(APIView):
 
 
 # ================= CHECKOUT =================
+# ================= CHECKOUT =================
 class Checkout(APIView):
     authentication_classes = [JWTTokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request, user_id):
+        from .publisher import publish_order_placed
+
         selected_ids = request.data.get('items', [])
 
         if not selected_ids:
@@ -66,8 +69,38 @@ class Checkout(APIView):
         if not cart_items.exists():
             return Response({'error': 'Selected items not found'}, status=404)
 
+        # Mark items as placed FIRST — this is the source of truth
         cart_items.update(status='placed')
-        return Response({'message': 'Selected items ordered successfully'})
+
+        # Build event payload
+        items_payload = [
+            {
+                'product_id': item.product_id,
+                'quantity': item.quantity,
+                'product_name': item.product_name,
+            }
+            for item in cart_items
+        ]
+
+        # Publish event — failure here does NOT affect the checkout response
+        # Product service will decrement stock when it receives the event
+        placed_orders = Order.objects.filter(
+            user_id=request.user.id,
+            status='placed',
+            id__in=selected_ids
+        )
+        for order in placed_orders:
+            publish_order_placed(
+                order_id=order.id,
+                user_id=str(request.user.id),
+                items=[{
+                    'product_id': order.product_id,
+                    'quantity': order.quantity,
+                    'product_name': order.product_name,
+                }]
+            )
+
+        return Response({'message': 'Order placed successfully'})
 
 
 # ================= ORDER HISTORY =================
