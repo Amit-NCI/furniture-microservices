@@ -76,9 +76,9 @@ The v1 prototype had real security and operational problems. Phase 1 fixed them 
 
 | Phase | Status | What it adds |
 |---|---|---|
-| 1 — Production hardening | ✅ Complete | Secrets, gunicorn, non-root containers, JWT token-only auth |
+| 1 — Production hardening | Complete | Secrets, gunicorn, non-root containers, JWT token-only auth |
 | 2 — PostgreSQL | Completed | One Postgres DB per service, proper migrations, Order model improvements |
-| 3 — Event-driven messaging | ⏳ Planned | RabbitMQ: Order service publishes `order.placed`, Product service consumes and decrements stock |
+| 3 — Event-driven messaging | Complete | RabbitMQ: Order service publishes `order.placed`, Product service consumes and decrements stock |
 | 4 — Testing | ⏳ Planned | pytest, pylint, SonarQube quality gate, 80%+ coverage |
 | 5 — CI/CD | ⏳ Planned | GitHub Actions: lint → test → scan → build → push to ECR → deploy |
 | 6 — AWS + Terraform | ⏳ Planned | VPC, ECS Fargate, RDS, ECR, Secrets Manager — all provisioned via Terraform |
