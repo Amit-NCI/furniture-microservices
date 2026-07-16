@@ -6,3 +6,6 @@ gunicorn
 python-decouple
 psycopg2-binary
 pika
+pytest
+pytest-django
+pytest-cov

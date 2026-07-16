@@ -5,3 +5,6 @@ djangorestframework-simplejwt
 gunicorn
 python-decouple
 psycopg2-binary
+pytest
+pytest-django
+pytest-cov
