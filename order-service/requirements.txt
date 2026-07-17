@@ -9,3 +9,5 @@ pika
 pytest
 pytest-django
 pytest-cov
+pylint
+pylint-django

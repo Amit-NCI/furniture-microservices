@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint & Test — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: auth-service
+            working_dir: auth-service
+            settings_module: auth_service.settings
+            app_dir: auth_service
+          - service: order-service
+            working_dir: order-service
+            settings_module: order_service.settings
+            app_dir: .
+          - service: product-service
+            working_dir: product-service
+            settings_module: product_service.settings
+            app_dir: .
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: ${{ matrix.working_dir }}/requirements.txt
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.working_dir }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pylint
+        working-directory: ${{ matrix.working_dir }}
+        run: |
+          pylint --exit-zero --fail-under=6.0 $(find . -name "*.py" ! -path "*/migrations/*" ! -path "*/venv/*" ! -path "*/.venv/*" ! -name "manage.py" ! -path "*/tests/*")
+
+      - name: Run pytest with coverage
+        working-directory: ${{ matrix.working_dir }}
+        run: |
+          python -m pytest tests/ -v --no-header

@@ -8,3 +8,5 @@ psycopg2-binary
 pytest
 pytest-django
 pytest-cov
+pylint
+pylint-django

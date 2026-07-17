@@ -1,0 +1,20 @@
+[MASTER]
+load-plugins=pylint_django
+django-settings-module=auth_service.settings
+ignore=migrations,venv,.venv
+
+[MESSAGES CONTROL]
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-ancestors,
+    duplicate-code,
+    line-too-long
+
+[DESIGN]
+max-line-length=120
+
+[REPORTS]
+output-format=text
