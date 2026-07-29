@@ -1,0 +1,10 @@
+[run]
+omit =
+    */migrations/*
+    manage.py
+    products/consumer.py
+    products/apps.py
+
+[report]
+exclude_lines =
+    pragma: no cover

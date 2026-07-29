@@ -1,8 +1,10 @@
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .models import Order
 from .authentication import JWTTokenAuthentication
+from .publisher import publish_order_placed
 
 
 # ================= CREATE ORDER =================
@@ -53,7 +55,6 @@ class Checkout(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, user_id):
-        from .publisher import publish_order_placed
 
         selected_ids = request.data.get('items', [])
 

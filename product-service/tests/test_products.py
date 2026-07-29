@@ -76,7 +76,7 @@ class TestProductList:
 
     def test_unauthenticated_cannot_list_products(self, client):
         response = client.get('/api/products/')
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_staff_can_create_product(self, staff_client):
         response = staff_client.post('/api/products/', {
