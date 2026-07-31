@@ -1,7 +1,15 @@
 import pytest
-from django.urls import reverse
+from django.urls import path
 from rest_framework.test import APIClient
 from users.models import User
+
+
+def get_urls():
+    from users.views import RegisterView, LoginView
+    return [
+        path('api/auth/register/', RegisterView.as_view()),
+        path('api/auth/login/', LoginView.as_view()),
+    ]
 
 
 @pytest.fixture
@@ -44,6 +52,7 @@ def staff_user_pending(db):
 # ============================================================
 
 @pytest.mark.django_db
+@pytest.mark.urls('tests.test_auth')
 class TestRegister:
 
     def test_register_customer_success(self, client):
@@ -95,6 +104,7 @@ class TestRegister:
 # ============================================================
 
 @pytest.mark.django_db
+@pytest.mark.urls('tests.test_auth')
 class TestLogin:
 
     def test_login_customer_success(self, client, customer_user):
@@ -114,7 +124,6 @@ class TestLogin:
             'password': 'TestPass@123',
         }, format='json')
         assert response.status_code == 200
-        # JWT tokens are non-empty strings with three dot-separated parts
         access = response.data['access']
         assert len(access.split('.')) == 3
 
@@ -155,3 +164,9 @@ class TestLogin:
         }, format='json')
         assert response.status_code == 400
         assert 'required' in response.data['error']
+
+
+# ============================================================
+# URL patterns for @pytest.mark.urls
+# ============================================================
+urlpatterns = get_urls()

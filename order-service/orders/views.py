@@ -91,15 +91,21 @@ class Checkout(APIView):
             id__in=selected_ids
         )
         for order in placed_orders:
-            publish_order_placed(
-                order_id=order.id,
-                user_id=str(request.user.id),
-                items=[{
-                    'product_id': order.product_id,
-                    'quantity': order.quantity,
-                    'product_name': order.product_name,
-                }]
-            )
+            try:
+                publish_order_placed(
+                    order_id=order.id,
+                    user_id=str(request.user.id),
+                    items=[{
+                        'product_id': order.product_id,
+                        'quantity': order.quantity,
+                        'product_name': order.product_name,
+                    }]
+                )
+            except Exception:
+                # Event delivery is best-effort — the order is already
+                # placed and is the source of truth. A RabbitMQ outage
+                # must not fail the customer's checkout.
+                pass
 
         return Response({'message': 'Order placed successfully'})
 
