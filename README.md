@@ -80,7 +80,7 @@ The v1 prototype had real security and operational problems. Phase 1 fixed them 
 | 2 — PostgreSQL | Completed | One Postgres DB per service, proper migrations, Order model improvements |
 | 3 — Event-driven messaging | Complete | RabbitMQ: Order service publishes `order.placed`, Product service consumes and decrements stock |
 | 4 — Testing | Completed | pytest, pylint, SonarQube quality gate, 80%+ coverage |
-| 5 — CI/CD | ⏳ Planned | GitHub Actions: lint → test → scan → build → push to ECR → deploy |
+| 5 — CI/CD | Completed | GitHub Actions: lint → test → scan → build → push to ECR → deploy |
 | 6 — AWS + Terraform | ⏳ Planned | VPC, ECS Fargate, RDS, ECR, Secrets Manager — all provisioned via Terraform |
 | 7 — Observability | ⏳ Planned | Prometheus metrics endpoint per service, Grafana dashboard |
 
