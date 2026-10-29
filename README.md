@@ -51,7 +51,7 @@ The Auth service issues JWTs. The Product and Order services check the tokens lo
 
 I also tested the Order service's Django migrations against a disposable PostgreSQL 16.14 database. Django connected successfully using the isolated `django_idempotency_test` schema, and all migrations completed, including `orders.0004_orderidempotencykey`.
 
-This test did not change the live database. The new idempotency migration has not been deployed, and the Django API concurrency tests are still pending.
+This test did not change the live database. The new idempotency migration has not been deployed. Django API concurrency tests have since passed against the same disposable PostgreSQL environment.
 
 ### PostgreSQL and order safety
 
@@ -61,7 +61,7 @@ I have also added an idempotency-key mechanism to the Order service. An optional
 
 The implementation uses a database unique constraint and an atomic transaction to avoid saving an extra order when two requests compete for the same key.
 
-This change is **still being tested**. Migration `0004_orderidempotencykey.py` exists locally but has **not** been applied to the live PostgreSQL database. The Buy Now submission will remain disabled until the remaining Django/PostgreSQL integration checks pass.
+The idempotency logic has passed the current backend and disposable PostgreSQL integration tests. Migration `0004_orderidempotencykey.py` has **not** been applied to the live PostgreSQL database. Buy Now submission remains disabled until the deployment and remaining safety checks are completed.
 
 ### Messaging with RabbitMQ
 
@@ -91,11 +91,17 @@ The latest verified results are:
 | Frontend JavaScript tests | 19 passed |
 | PostgreSQL duplicate-key rollback scenario | Passed |
 | PostgreSQL simultaneous-transaction scenario | Passed |
-| Django endpoint concurrency against PostgreSQL | Pending |
+| Django endpoint concurrency against PostgreSQL | Passed in disposable database |
+| Django endpoint retry and conflict checks | Passed in disposable database |
+| Django endpoint concurrent conflicting requests | Passed in disposable database |
 
 The PostgreSQL checks ran in a separate disposable database, not against customer data. They confirmed that the unique constraint prevents two competing transactions from committing duplicate idempotency records, and that a failed transaction does not leave behind an extra committed order.
 
-Those database-level checks do **not** yet prove that the Django API handles simultaneous requests correctly. Testing the actual endpoint against disposable PostgreSQL is the next step.
+I also tested the actual Django order-creation endpoint against the disposable PostgreSQL database. Two simultaneous requests with the same user, product, quantity, and idempotency key both returned HTTP 200 and the same order ID. PostgreSQL committed one order and one idempotency record.
+
+Retrying the same request returned the original order ID. Reusing the key with a different product or quantity returned HTTP 409 without creating another order. In a separate concurrent test, two requests used the same key but different quantities. One returned HTTP 200, the other returned HTTP 409, and only the successful request's order was committed.
+
+After these checks, I reran the Order service regression suite: all 56 backend tests passed. The previously verified frontend suite also passed all 19 tests, giving 75 passing automated tests in total. These tests do not mean the idempotency feature has been deployed to the live database.
 
 ## Technology used
 
@@ -189,7 +195,7 @@ The order and cart APIs require authentication. Some product operations are rest
 | GitHub Actions CI/CD | Implemented; ongoing improvements |
 | Idempotency model, migration, and backend logic | Implemented locally; not deployed |
 | PostgreSQL transaction and concurrency checks | Completed in disposable database |
-| Django/PostgreSQL integration and concurrent API tests | In progress |
+| Django/PostgreSQL integration and concurrent API tests | Completed in disposable database; not deployed |
 | Enable Buy Now order submission | Planned after testing |
 | AWS deployment using Terraform | Planned |
 | Prometheus and Grafana monitoring | Planned |
