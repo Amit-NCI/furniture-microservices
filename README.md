@@ -1,269 +1,209 @@
-# Furniture E-Commerce Platform — Microservices Architecture
+# Furniture E-Commerce Platform
 
-A production-hardened, Dockerized microservices e-commerce platform built with **Python, Django REST Framework, JWT Authentication, Gunicorn, Nginx, and Docker Compose**.
+A furniture shopping application built with Python, Django REST Framework, PostgreSQL, RabbitMQ, Docker, and Nginx. I started this project to learn how the different parts of an e-commerce system work together when they are built as separate services.
 
-This project is being actively developed in phases, moving from a working prototype toward a production-grade system with PostgreSQL, RabbitMQ event-driven messaging, CI/CD, Prometheus/Grafana observability, and AWS deployment via Terraform.
+The project is still in development. The main shopping flows are working, and I am now focusing on testing, reliability, and preparing the application for cloud deployment.
 
-> **Active development** — commits are ongoing. See the [Roadmap](#roadmap) section for what's built and what's next.
+## How the application works
 
----
+The application has four services:
 
-## Architecture
+- **Auth service:** Handles user registration, login, JWT tokens, and user roles.
+- **Product service:** Manages the furniture catalogue and staff-only product changes.
+- **Order service:** Handles shopping carts, checkout, and order history.
+- **Frontend service:** Serves the pages and JavaScript used by customers.
 
-```
+Nginx provides one entry point for the application. The browser sends API requests through Nginx, which forwards each request to the correct service. The frontend serves the website; it does not act as another API proxy.
+
+```text
 Browser
-   │
-   ▼
-Nginx (port 80) ── single entry point, routes by path
-   │
-   ├── /              ──► Frontend Service  (port 8004)  Django Templates + JS
-   ├── /api/auth/     ──► Auth Service      (port 8001)  JWT login/register
-   ├── /api/products/ ──► Product Service   (port 8002)  Catalog + staff CRUD
-   └── /api/orders/   ──► Order Service     (port 8003)  Cart + checkout
-       /api/cart/
-       /api/checkout/
+   |
+   v
+Nginx (port 80)
+   |
+   +-- /               --> Frontend (port 8004)
+   +-- /api/auth/      --> Auth (port 8001)
+   +-- /api/products/  --> Product (port 8002)
+   +-- /api/orders/    --> Order (port 8003)
+   +-- /api/cart/      --> Order (port 8003)
+   +-- /api/checkout/  --> Order (port 8003)
+
+Auth, Product and Order each have their own PostgreSQL database.
+Order publishes order events to RabbitMQ; Product consumes them.
 ```
 
-**Key architectural decision:** The browser calls backend services directly via `fetch()` through Nginx — the Frontend service only serves HTML/CSS/JS. There is no server-side API proxying through Frontend. This keeps the frontend stateless and the API surface clean.
+The Auth service issues JWTs. The Product and Order services check the tokens locally, without making a database request to Auth for every API call.
 
-**JWT verification:** Order and Product services verify tokens locally using a shared signing key — no network call to Auth service required. This is stateless by design; moving to RS256 (asymmetric) is planned for Phase 3.
+## What is implemented
 
-Each service has its own isolated SQLite database (PostgreSQL migration is Phase 2).
+### Shopping features
 
----
+- User registration and login.
+- JWT-based authentication and role-based access.
+- Product browsing and staff-only product management.
+- Add to cart, update quantities, remove items, and clear the cart.
+- Checkout for selected cart items and order history.
+- A Buy Now preview page that shows the selected product before checkout.
 
-## Services
+**Buy Now is not enabled for placing orders yet.** The frontend intentionally blocks the final Buy Now submission while its backend reliability checks are being completed.
 
-| Service | Port | Responsibility | Auth Required |
-|---|---|---|---|
-| Auth | 8001 | Registration, login, JWT issuance, role management | No (public endpoints) |
-| Product | 8002 | Product catalog, staff CRUD | GET: any authenticated user; POST/PUT/DELETE: staff only |
-| Order | 8003 | Cart, checkout, order history | Yes — JWT on all endpoints |
-| Frontend | 8004 | Serves HTML/CSS/JS pages | No |
-| Nginx | 80 | Reverse proxy, single entry point | — |
+### Django migration verification
 
----
+I also tested the Order service's Django migrations against a disposable PostgreSQL 16.14 database. Django connected successfully using the isolated `django_idempotency_test` schema, and all migrations completed, including `orders.0004_orderidempotencykey`.
 
-## Phase 1 — Production Hardening ✅ Complete
+This test did not change the live database. The new idempotency migration has not been deployed, and the Django API concurrency tests are still pending.
 
-The v1 prototype had real security and operational problems. Phase 1 fixed them before adding any new features.
+### PostgreSQL and order safety
 
-**What was wrong:**
-- `DEBUG = True` in all services — would leak stack traces in production
-- `SECRET_KEY` hardcoded and committed — and shared between Auth and Order services
-- `CORS_ALLOW_ALL_ORIGINS = True` — wide open
-- `python manage.py runserver` in Docker containers — single-threaded dev server, not suitable for any real load
-- Containers running as root
-- Internal service ports exposed directly on the host — bypassing Nginx
-- `psycopg2-binary` in every `requirements.txt` despite the project using SQLite
+Each backend service uses its own PostgreSQL database. The Order service stores order details, including product information and the price at the time of purchase.
 
-**What was fixed:**
-- All secrets moved to `.env` files loaded via `python-decouple` — never committed, per-service
-- Unique `SECRET_KEY` per service — Auth and Order no longer share a key
-- Dedicated `JWT_SIGNING_KEY` for token signing/verification, separate from Django's secret
-- `DEBUG=False`, `ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS` restricted per service
-- `runserver` replaced with **Gunicorn** (2 workers) in all four services
-- Multi-stage Dockerfiles — builder stage installs dependencies, runtime stage is lean
-- Containers run as non-root `appuser`
-- Internal service ports removed from host exposure — only `nginx:80` is reachable externally
-- Custom `JWTTokenAuthentication` in Product and Order services — reads user claims from token payload directly, no cross-service database lookup
-- `IsStaffUser` and `IsCustomerOrStaff` permission classes in Product service
-- `.env.example` files committed for all services so anyone cloning knows what variables are needed
+I have also added an idempotency-key mechanism to the Order service. An optional `Idempotency-Key` request header lets the backend recognise a repeated order-creation request from the same user. A repeated key with the same product and quantity should return the original order ID. Reusing that key with a different product or quantity is rejected.
 
----
+The implementation uses a database unique constraint and an atomic transaction to avoid saving an extra order when two requests compete for the same key.
 
-## Roadmap
+This change is **still being tested**. Migration `0004_orderidempotencykey.py` exists locally but has **not** been applied to the live PostgreSQL database. The Buy Now submission will remain disabled until the remaining Django/PostgreSQL integration checks pass.
 
-| Phase | Status | What it adds |
-|---|---|---|
-| 1 — Production hardening | Complete | Secrets, gunicorn, non-root containers, JWT token-only auth |
-| 2 — PostgreSQL | Completed | One Postgres DB per service, proper migrations, Order model improvements |
-| 3 — Event-driven messaging | Complete | RabbitMQ: Order service publishes `order.placed`, Product service consumes and decrements stock |
-| 4 — Testing | Completed | pytest, pylint, SonarQube quality gate, 80%+ coverage |
-| 5 — CI/CD | Completed now | GitHub Actions: lint → test → scan → build → push to ECR → deploy |
-| 6 — AWS + Terraform | ⏳ Planned | VPC, ECS Fargate, RDS, ECR, Secrets Manager — all provisioned via Terraform |
-| 7 — Observability | ⏳ Planned | Prometheus metrics endpoint per service, Grafana dashboard |
+### Messaging with RabbitMQ
 
----
+The Order service publishes an `order.placed` event when an order is placed. The Product service consumes order events to update stock. This allows the services to communicate without the Order service directly changing the Product database.
 
-## Local Development
+### Security and deployment improvements
 
-### Prerequisites
+- Application secrets are kept in local `.env` files, with `.env.example` files provided for setup.
+- JWT signing uses a dedicated key, separate from each service's Django secret key.
+- Debug mode and allowed hosts/origins are controlled through configuration.
+- Gunicorn runs the Django applications in Docker instead of Django's development server.
+- Application containers run as a non-root user.
+- Nginx is the external entry point; backend service ports are not published directly to the host.
+- Multi-stage Docker builds are used for the application images.
 
-- Docker Desktop
-- Python 3.12 (for local key generation only)
+These measures improve the setup, but the project should not be treated as a fully audited production deployment.
 
-### Setup
+## Testing
 
-**1. Clone the repo:**
-```bash
-git clone https://github.com/Amit-NCI/furniture-microservices.git
-cd furniture-microservices
-```
+Testing is an important part of this project because order and checkout bugs can affect customer data.
 
-**2. Create `.env` files for each service** (see `.env.example` in each service folder):
+The latest verified results are:
 
-Generate a unique secret key for each service:
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(50))"
-```
+| Check | Result |
+| --- | --- |
+| Order-service backend tests | 56 passed |
+| Frontend JavaScript tests | 19 passed |
+| PostgreSQL duplicate-key rollback scenario | Passed |
+| PostgreSQL simultaneous-transaction scenario | Passed |
+| Django endpoint concurrency against PostgreSQL | Pending |
 
-Run it 5 times — one `SECRET_KEY` per service, one shared `JWT_SIGNING_KEY` for auth/order/product.
+The PostgreSQL checks ran in a separate disposable database, not against customer data. They confirmed that the unique constraint prevents two competing transactions from committing duplicate idempotency records, and that a failed transaction does not leave behind an extra committed order.
 
-**`auth-service/.env`**
-```
-SECRET_KEY=your-unique-key-here
-DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,auth-service,nginx
-CORS_ALLOWED_ORIGINS=http://localhost,http://127.0.0.1
-JWT_SIGNING_KEY=your-shared-jwt-key-here
-```
+Those database-level checks do **not** yet prove that the Django API handles simultaneous requests correctly. Testing the actual endpoint against disposable PostgreSQL is the next step.
 
-**`order-service/.env`** and **`product-service/.env`** follow the same pattern — include `JWT_SIGNING_KEY` (must match auth-service).
+## Technology used
 
-**`frontend/.env`** — same pattern, no `JWT_SIGNING_KEY` needed.
-
-**3. Build and start:**
-```bash
-docker compose up --build
-```
-
-**4. Create a user:**
-```bash
-docker exec -it auth-service sh -c "cd auth_service && python manage.py shell -c \"
-from users.models import User
-User.objects.create_user(username='paul', password='Paul@15', role='customer', is_approved=True)
-print('User created')
-\""
-```
-
-**5. Test the system:**
-```bash
-# Login and capture token
-TOKEN=$(curl -s -X POST http://localhost/api/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{"username": "paul", "password": "Paul@15"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access'])")
-
-# Browse products
-curl -s http://localhost/api/products/ -H "Authorization: Bearer $TOKEN"
-
-# Add to cart
-curl -s -X POST http://localhost/api/orders/ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"product_id": 1, "quantity": 2}'
-
-# Order history
-curl -s http://localhost/api/orders/history/2/ -H "Authorization: Bearer $TOKEN"
-```
-
----
-
-## API Reference
-
-### Auth Service
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/auth/register/` | No | Register new user |
-| POST | `/api/auth/login/` | No | Login, returns JWT access + refresh tokens |
-
-### Product Service
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/products/` | Customer or Staff | List all products |
-| GET | `/api/products/<id>/` | No | Product detail |
-| POST | `/api/products/` | Staff only | Create product |
-| PUT | `/api/products/update/<id>/` | Staff only | Update product |
-| DELETE | `/api/products/delete/<id>/` | Staff only | Delete product |
-
-### Order Service
-
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/orders/` | Yes | Add item to cart |
-| GET | `/api/cart/` | Yes | View cart |
-| POST | `/api/cart/update/<id>/` | Yes | Update quantity |
-| DELETE | `/api/cart/<id>/` | Yes | Remove cart item |
-| POST | `/api/cart/remove-selected/<user_id>/` | Yes | Remove selected items |
-| DELETE | `/api/cart/clear/<user_id>/` | Yes | Clear entire cart |
-| POST | `/api/checkout/<user_id>/` | Yes | Checkout selected items |
-| GET | `/api/orders/history/<user_id>/` | Yes | Order history |
-
----
-
-## Order Status Lifecycle
-
-```
-cart → placed → shipped → delivered
-```
-
-`cart` and `placed` are implemented. `shipped` and `delivered` are planned for Phase 3 when order events drive status updates.
-
----
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| Language | Python 3.12 |
-| Framework | Django 6, Django REST Framework |
-| Authentication | SimpleJWT (HS256 → RS256 in Phase 3) |
-| Server | Gunicorn |
-| Proxy | Nginx |
+| Area | Tools |
+| --- | --- |
+| Backend | Python 3.12, Django 6, Django REST Framework |
+| Frontend | Django templates, HTML, CSS, JavaScript |
+| Authentication | JWT / SimpleJWT |
+| Database | PostgreSQL 16 |
+| Messaging | RabbitMQ |
+| Web server and routing | Gunicorn, Nginx |
 | Containers | Docker, Docker Compose |
-| Database | PostgreSQL 16 (one instance per service) |
-| Message broker | RabbitMQ 3.13 (event-driven messaging) |
-| Secrets | python-decouple + .env files |
-| Version Control | Git, GitHub |
+| Testing | pytest, frontend JavaScript tests, PostgreSQL transaction tests |
+| Automation | GitHub Actions |
+| Planned cloud infrastructure | AWS, Terraform |
+| Planned monitoring | Prometheus, Grafana |
 
-**Coming in later phases:** PostgreSQL, RabbitMQ, pytest, pylint, SonarQube, GitHub Actions, Terraform, AWS ECS/Fargate, RDS, ECR, Prometheus, Grafana
+## Running the project locally
 
----
+You will need Docker Desktop and Git. Python is useful for generating local secret values.
 
-## Docker Commands
+1. Clone the repository:
+
+   ```bash
+   git clone https://github.com/Amit-NCI/furniture-microservices.git
+   cd furniture-microservices
+   ```
+
+2. Create the `.env` files required by each service using the matching `.env.example` files. Use different Django `SECRET_KEY` values for each service and the same dedicated `JWT_SIGNING_KEY` wherever JWTs are issued or verified. Configure the database and RabbitMQ settings as shown in the examples.
+
+   You can generate random secret values with:
+
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+   ```
+
+3. Build and start the services:
+
+   ```bash
+   docker compose up --build -d
+   ```
+
+4. Open `http://localhost` in your browser.
+
+5. Check container status and logs if a service does not start:
+
+   ```bash
+   docker compose ps
+   docker compose logs --tail=100 order-service
+   ```
+
+To stop the application without deleting database volumes:
 
 ```bash
-# Build and start all services
-docker compose up --build
-
-# Run in background
-docker compose up --build -d
-
-# Stop all services
 docker compose down
-
-# View logs for a specific service
-docker logs auth-service
-docker logs product-service
-docker logs order-service
-docker logs frontend
-
-# Restart a single service
-docker compose restart auth-service
 ```
 
----
+**Data safety:** Do not use `docker compose down -v` if you want to keep existing database data. Avoid testing order-creation and checkout endpoints against a database containing real customer records.
 
-## Security Notes
+## Main API routes
 
-- `.env` files are gitignored — never committed
-- Each service has a unique `SECRET_KEY`
-- JWT signing uses a dedicated `JWT_SIGNING_KEY` separate from Django's secret
-- Product and Order services verify JWTs without any database lookup (token payload only)
-- Only Nginx on port 80 is exposed to the host — internal services are network-isolated
-- All containers run as non-root `appuser`
-- `DEBUG=False` in all services
+| Method | Route | Purpose |
+| --- | --- | --- |
+| POST | `/api/auth/register/` | Register a user |
+| POST | `/api/auth/login/` | Log in and receive JWT tokens |
+| GET | `/api/products/` | List products |
+| GET | `/api/products/<id>/` | View a product |
+| POST | `/api/products/` | Add a product (staff) |
+| PUT | `/api/products/update/<id>/` | Update a product (staff) |
+| DELETE | `/api/products/delete/<id>/` | Delete a product (staff) |
+| POST | `/api/orders/` | Create a cart order; optional idempotency key is under test |
+| GET | `/api/cart/` | View the cart |
+| POST | `/api/cart/update/<id>/` | Change quantity |
+| DELETE | `/api/cart/<id>/` | Remove an item |
+| POST | `/api/cart/remove-selected/<user_id>/` | Remove selected items |
+| DELETE | `/api/cart/clear/<user_id>/` | Clear the cart |
+| POST | `/api/checkout/<user_id>/` | Check out selected cart items |
+| GET | `/api/orders/history/<user_id>/` | View order history |
 
----
+The order and cart APIs require authentication. Some product operations are restricted to staff users.
+
+## Development roadmap
+
+| Work | Status |
+| --- | --- |
+| Docker-based services and Nginx routing | Completed |
+| Secrets, JWT checks, non-root containers, and Gunicorn | Completed |
+| Separate PostgreSQL databases | Completed |
+| RabbitMQ order events and stock updates | Completed |
+| Automated backend and frontend tests | In place; continuing to expand |
+| GitHub Actions CI/CD | Implemented; ongoing improvements |
+| Idempotency model, migration, and backend logic | Implemented locally; not deployed |
+| PostgreSQL transaction and concurrency checks | Completed in disposable database |
+| Django/PostgreSQL integration and concurrent API tests | In progress |
+| Enable Buy Now order submission | Planned after testing |
+| AWS deployment using Terraform | Planned |
+| Prometheus and Grafana monitoring | Planned |
+
+## What I learned
+
+Building this project has helped me understand how authentication, product data, orders, databases, and messaging fit together in a microservices application. It has also shown me why deployment and testing matter as much as writing an API.
+
+A recent focus has been making order creation safer when users retry requests or when two requests arrive at nearly the same time. I used PostgreSQL transactions and unique constraints to test these situations in an isolated environment before making changes to the running application.
 
 ## Author
 
 **Amit Kumar Yadav**
-MSc Cloud Computing — National College of Ireland, Dublin
+MSc Cloud Computing, National College of Ireland, Dublin
 
-Cloud & DevOps Engineer | Python · Django · Docker · Kubernetes · AWS · Terraform · Microservices
-
-- GitHub: [github.com/Amit-NCI](https://github.com/Amit-NCI)
-- LinkedIn: [linkedin.com/in/amit-kumar-yadav-70117392](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)
+GitHub: [Amit-NCI](https://github.com/Amit-NCI)
+LinkedIn: [Amit Kumar Yadav](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)

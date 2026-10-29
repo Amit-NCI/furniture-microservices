@@ -28,3 +28,26 @@ class Order(models.Model):
 
     def __str__(self):
         return f"Order {self.id} — {self.product_name} ({self.status})"
+
+class OrderIdempotencyKey(models.Model):
+    user_id = models.IntegerField()
+    key = models.CharField(max_length=128)
+    product_id = models.IntegerField()
+    quantity = models.IntegerField()
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='idempotency_records',
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user_id', 'key'],
+                name='unique_order_idempotency_per_user',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Idempotency key for user {self.user_id}"
