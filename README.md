@@ -213,3 +213,26 @@ MSc Cloud Computing, National College of Ireland, Dublin
 
 GitHub: [Amit-NCI](https://github.com/Amit-NCI)
 LinkedIn: [Amit Kumar Yadav](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)
+
+
+### Frontend Buy Now idempotency preparation
+
+The Buy Now checkout page now has a helper for preparing an idempotency key.
+
+The helper uses a secure random UUID and stores it in browser session storage.
+It reuses the same key when the same user refreshes the checkout page for
+the same product. It refuses to reuse a stored attempt for another user or
+product. If secure storage or UUID generation is unavailable, it fails
+instead of creating an unprotected checkout key.
+
+Three new frontend tests cover page refreshes, different users or products,
+and missing secure browser features.
+
+All 22 frontend tests passed. The backend test suite previously passed
+56 tests, giving 78 passing automated tests across both suites.
+
+This is preparation only. The helper is not yet connected to the order
+creation request, and Buy Now submission remains disabled.
+
+The idempotency database migration has only been tested against disposable
+PostgreSQL. It has not been applied to the live database.

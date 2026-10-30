@@ -1,0 +1,1612 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const template = fs.readFileSync(
+    path.join(__dirname, "../templates/checkout.html"),
+    "utf8"
+);
+
+const match = template.match(/<script>([\s\S]*?)<\/script>/);
+
+if (!match) {
+    throw new Error("Checkout inline JavaScript not found.");
+}
+
+const checkoutScript = match[1];
+
+test("checkout refuses submission without JWT", async () => {
+    const alerts = [];
+    const requests = [];
+
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "",
+                href: "/checkout/"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+
+                return {};
+            },
+            addEventListener() {},
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return null;
+                }
+
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem() {}
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(...args) {
+            requests.push(args);
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(requests.length, 0);
+    assert.equal(alerts.length, 1);
+    assert.equal(
+        alerts[0],
+        "Please log in before placing an order."
+    );
+});
+
+
+test("checkout refuses submission with empty selected order IDs", async () => {
+    const alerts = [];
+    const requests = [];
+
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "",
+                href: "/checkout/"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return "mock-jwt-token";
+                }
+
+                if (key === "user") {
+                    return JSON.stringify({ id: 1 });
+                }
+
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem() {}
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(...args) {
+            requests.push(args);
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Simulate an empty cart selection.
+    vm.runInContext("selectedOrderIds = []", context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(requests.length, 0);
+
+    assert.deepEqual(alerts, [
+        "No valid items selected for checkout."
+    ]);
+});
+
+test("checkout sends selected order IDs with JWT authentication", async () => {
+    const requests = [];
+    const alerts = [];
+    const removedKeys = [];
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "",
+                href: "/checkout/"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return "mock-jwt-token";
+                }
+                if (key === "user") {
+                    return JSON.stringify({ id: 1 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem(key) {
+                removedKeys.push(key);
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return {
+                        message: "Order placed successfully."
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // These are cart order IDs, not product IDs.
+    vm.runInContext("selectedOrderIds = [12, 15]", context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(requests.length, 1);
+
+    const request = requests[0];
+
+    assert.equal(request.url, "/api/checkout/1/");
+    assert.equal(request.options.method, "POST");
+
+    assert.equal(
+        request.options.headers.Authorization,
+        "Bearer mock-jwt-token"
+    );
+
+    assert.equal(
+        request.options.headers["Content-Type"],
+        "application/json"
+    );
+
+    assert.deepEqual(
+        JSON.parse(request.options.body),
+        { items: [12, 15] }
+    );
+
+    assert.deepEqual(
+        removedKeys,
+        ["checkoutSelectedItems"]
+    );
+
+    assert.deepEqual(
+        alerts,
+        ["Order placed successfully."]
+    );
+
+    assert.equal(
+        context.window.location.href,
+        "/orders/"
+    );
+
+    assert.equal(button.disabled, true);
+});
+
+test("checkout handles backend HTTP errors without reporting success", async () => {
+    const requests = [];
+    const alerts = [];
+    const removedKeys = [];
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "",
+                href: "/checkout/"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return "mock-jwt-token";
+                }
+                if (key === "user") {
+                    return JSON.stringify({ id: 1 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem(key) {
+                removedKeys.push(key);
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            return {
+                ok: false,
+                status: 404,
+                async json() {
+                    return {
+                        error: "Selected items not found"
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("selectedOrderIds = [12, 15]", context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(requests.length, 1);
+
+    assert.deepEqual(
+        alerts,
+        ["Selected items not found"]
+    );
+
+    assert.equal(
+        context.window.location.href,
+        "/checkout/"
+    );
+
+    assert.deepEqual(removedKeys, []);
+
+    assert.equal(button.disabled, false);
+});
+
+test("checkout prevents immediate retry after uncertain network failure", async () => {
+    const requests = [];
+    const alerts = [];
+    const removedKeys = [];
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "",
+                href: "/checkout/"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return "mock-jwt-token";
+                }
+                if (key === "user") {
+                    return JSON.stringify({ id: 1 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem(key) {
+                removedKeys.push(key);
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            // Simulate a connection failure after submission.
+            throw new Error("Network connection lost");
+        },
+        console: {
+            error() {}
+        }
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("selectedOrderIds = [12, 15]", context);
+
+    // First checkout attempt.
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(requests.length, 1);
+
+    assert.deepEqual(alerts, [
+        "Unable to confirm your order. Please check your order history before trying again."
+    ]);
+
+    assert.equal(button.disabled, true);
+
+    assert.equal(context.window.location.href, "/checkout/");
+
+    assert.deepEqual(removedKeys, []);
+
+    // Simulate another attempt from the same page.
+    await vm.runInContext("handleCheckout()", context);
+
+    // No second API request should be sent.
+    assert.equal(requests.length, 1);
+
+    assert.equal(button.disabled, true);
+});
+
+test("Buy Now rejects null product response without creating an order", async () => {
+    const requests = [];
+
+    const button = { disabled: true };
+
+    const container = {
+        innerHTML: "",
+        textContent: ""
+    };
+
+    const totalAmount = {
+        innerText: "",
+        textContent: ""
+    };
+
+    const context = {
+        URLSearchParams,
+        PRODUCT_URL: "",
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") {
+                    return button;
+                }
+
+                if (id === "checkout-items") {
+                    return container;
+                }
+
+                if (id === "total-amount") {
+                    return totalAmount;
+                }
+
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") {
+                    return "mock-jwt-token";
+                }
+
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem() {
+                return null;
+            },
+            removeItem() {}
+        },
+        alert() {},
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url === "/api/products/5/") {
+                return {
+                    ok: true,
+                    status: 200,
+                    async json() {
+                        return null;
+                    }
+                };
+            }
+
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    await vm.runInContext("loadCheckout()", context);
+
+    assert.equal(
+        container.textContent,
+        "Invalid product information."
+    );
+
+    assert.equal(button.disabled, true);
+
+    assert.equal(requests.length, 1);
+
+    assert.equal(
+        requests[0].url,
+        "/api/products/5/"
+    );
+
+    assert.equal(
+        requests[0].options,
+        undefined
+    );
+});
+
+test("Buy Now marks valid product preview ready without placing an order", async () => {
+    const requests = [];
+    const button = { disabled: true };
+
+    const container = {
+        innerHTML: "",
+        textContent: ""
+    };
+
+    const totalAmount = {
+        innerText: "",
+        textContent: ""
+    };
+
+    const context = {
+        URLSearchParams,
+        PRODUCT_URL: "",
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") return button;
+                if (id === "checkout-items") return container;
+                if (id === "total-amount") return totalAmount;
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        sessionStorage: {
+            getItem() { return null; },
+            removeItem() {}
+        },
+        alert() {},
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/products/5/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return {
+                        id: 5,
+                        name: "Office Chair",
+                        price: "149.99",
+                        description: "Ergonomic office chair",
+                        image_url: "/media/chair.jpg"
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    await vm.runInContext("loadCheckout()", context);
+
+    assert.equal(
+        vm.runInContext("buyNowProductReady", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("total", context),
+        149.99
+    );
+
+    assert.equal(button.disabled, true);
+
+    assert.match(container.innerHTML, /Office Chair/);
+    assert.match(container.innerHTML, /149\.99/);
+
+    assert.equal(totalAmount.innerText, "Total: €149.99");
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/products/5/");
+    assert.equal(requests[0].options, undefined);
+});
+
+test("Buy Now refuses submission when product preview is not ready", async () => {
+    const requests = [];
+    const alerts = [];
+
+    // Enabled deliberately to exercise the readiness guard directly.
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") return button;
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return '{"id":1}';
+                return null;
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(
+        vm.runInContext("buyNowProductReady", context),
+        false
+    );
+
+    assert.deepEqual(alerts, [
+        "Product information is not ready. Please try again."
+    ]);
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now ready product remains blocked until order integration", async () => {
+    const requests = [];
+    const alerts = [];
+
+    // Enabled deliberately to test the existing submission guard.
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") return button;
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return '{"id":1}';
+                return null;
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Simulate a successfully validated product preview.
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(
+        vm.runInContext("buyNowProductReady", context),
+        true
+    );
+
+    assert.deepEqual(alerts, [
+        "Buy Now checkout is not yet available."
+    ]);
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now blocks retry when order creation outcome is uncertain", async () => {
+    const requests = [];
+    const alerts = [];
+
+    // Enabled deliberately to exercise the uncertainty guard.
+    const button = { disabled: false };
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            getElementById(id) {
+                if (id === "place-order-btn") return button;
+                return {};
+            },
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return '{"id":1}';
+                return null;
+            }
+        },
+        alert(message) {
+            alerts.push(message);
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Simulate an uncertain previous order-creation outcome.
+    vm.runInContext("buyNowProductReady = true", context);
+    vm.runInContext("buyNowCreationUncertain = true", context);
+
+    await vm.runInContext("handleCheckout()", context);
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.deepEqual(alerts, [
+        "Unable to confirm whether an order was created. " +
+        "Please check your cart and order history before trying again."
+    ]);
+
+    assert.equal(requests.length, 0);
+});
+
+
+test("Buy Now idempotency key survives page refresh", () => {
+    const values = new Map();
+    let generated = 0;
+
+    const storage = {
+        getItem(key) {
+            return values.has(key) ? values.get(key) : null;
+        },
+        setItem(key, value) {
+            values.set(key, value);
+        }
+    };
+
+    const cryptoMock = {
+        randomUUID() {
+            generated++;
+            return "123e4567-e89b-42d3-a456-426614174000";
+        }
+    };
+
+    function createPage() {
+        const context = {
+            URLSearchParams,
+            window: {
+                location: {
+                    search: "?product_id=5",
+                    href: "/checkout/?product_id=5"
+                }
+            },
+            document: {
+                addEventListener() {}
+            },
+            sessionStorage: storage,
+            crypto: cryptoMock,
+            console
+        };
+
+        vm.createContext(context);
+        vm.runInContext(checkoutScript, context);
+        return context;
+    }
+
+    const firstPage = createPage();
+    const firstKey = vm.runInContext(
+        "prepareBuyNowIdempotencyKey(10, 5)", firstPage
+    );
+
+    const refreshedPage = createPage();
+    const secondKey = vm.runInContext(
+        "prepareBuyNowIdempotencyKey(10, 5)", refreshedPage
+    );
+
+    assert.equal(firstKey, secondKey);
+    assert.equal(generated, 1);
+
+    const stored = JSON.parse(values.get("buyNowIdempotencyAttempt"));
+    assert.deepEqual(stored, {
+        userId: 10,
+        productId: 5,
+        key: firstKey
+    });
+});
+
+test("Buy Now idempotency key rejects another user or product", () => {
+    const values = new Map();
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, value);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("prepareBuyNowIdempotencyKey(10, 5)", context);
+
+    assert.throws(
+        () => vm.runInContext(
+            "prepareBuyNowIdempotencyKey(11, 5)", context
+        ),
+        /different or invalid checkout attempt/
+    );
+
+    assert.throws(
+        () => vm.runInContext(
+            "prepareBuyNowIdempotencyKey(10, 6)", context
+        ),
+        /different or invalid checkout attempt/
+    );
+});
+
+test("Buy Now idempotency key requires secure storage and UUID generation", () => {
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    assert.throws(
+        () => vm.runInContext(
+            "prepareBuyNowIdempotencyKey(10, 5)", context
+        ),
+        /Secure checkout storage is unavailable/
+    );
+
+    context.sessionStorage = {
+        getItem() {
+            return null;
+        },
+        setItem() {}
+    };
+
+    assert.throws(
+        () => vm.runInContext(
+            "prepareBuyNowIdempotencyKey(10, 5)", context
+        ),
+        /Secure checkout key generation is unavailable/
+    );
+});
+
+test("Buy Now order creation rejects invalid product ID", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=invalid",
+                href: "/checkout/?product_id=invalid"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Even with a ready preview, an invalid product ID must be rejected.
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Invalid Buy Now product ID."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now order creation rejects unready product preview", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Confirm the preview starts in the unready state.
+    assert.equal(
+        vm.runInContext("buyNowProductReady", context),
+        false
+    );
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Buy Now product information is not ready."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now order creation rejects uncertain previous outcome", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Unexpected API request");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    // Simulate a valid product preview.
+    vm.runInContext("buyNowProductReady = true", context);
+
+    // Simulate an uncertain previous order-creation attempt.
+    vm.runInContext("buyNowCreationUncertain = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now creates one order and reuses the returned order ID", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return {
+                        message: "Item added to cart",
+                        order_id: 123
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    const firstOrderId = await vm.runInContext(
+        "createBuyNowOrder()", context
+    );
+
+    assert.equal(firstOrderId, 123);
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        123
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        false
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    assert.deepEqual(
+        JSON.parse(requests[0].options.body),
+        {
+            product_id: 5,
+            quantity: 1
+        }
+    );
+
+    assert.equal(
+        requests[0].options.headers.Authorization,
+        "Bearer mock-jwt-token"
+    );
+
+    // Calling again must reuse the existing order ID.
+    const secondOrderId = await vm.runInContext(
+        "createBuyNowOrder()", context
+    );
+
+    assert.equal(secondOrderId, 123);
+
+    // No second POST request should be made.
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now network failure blocks another order-creation attempt", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            // Simulate a lost connection after the request was sent.
+            throw new Error("Simulated network failure");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    // First attempt: network failure.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to confirm whether the Buy Now order was created."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // Second attempt must be rejected before another API request.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    // Still exactly one request.
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now HTTP 500 marks creation uncertain and blocks retry", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: false,
+                status: 500
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to confirm whether the Buy Now order was created."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // A second attempt must not send another request.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now invalid order ID marks creation uncertain and blocks retry", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return {
+                        message: "Item added to cart",
+                        order_id: null
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Invalid Buy Now order ID returned by the server."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // A second attempt must not create another order.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now malformed JSON marks creation uncertain and blocks retry", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    throw new SyntaxError("Unexpected end of JSON input");
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    // First attempt receives an unreadable response.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to confirm the created Buy Now order ID."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // A second attempt must be blocked.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    // No duplicate POST request.
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now simultaneous calls share one order-creation request", async () => {
+    const requests = [];
+
+    let releaseResponse;
+
+    const responseGate = new Promise(resolve => {
+        releaseResponse = resolve;
+    });
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                return key === "access" ? "mock-jwt-token" : null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            // Keep the first request pending.
+            await responseGate;
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return {
+                        message: "Item added to cart",
+                        order_id: 123
+                    };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    // Start two calls before the first response arrives.
+    const first = vm.runInContext("createBuyNowOrder()", context);
+    const second = vm.runInContext("createBuyNowOrder()", context);
+
+    // Both calls must share exactly the same promise.
+    assert.strictEqual(first, second);
+
+    // Only one POST request should have started.
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // Release the mocked server response.
+    releaseResponse();
+
+    const results = await Promise.all([first, second]);
+
+    assert.deepEqual(results, [123, 123]);
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        123
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        false
+    );
+
+    // Still only one POST request.
+    assert.equal(requests.length, 1);
+
+    // A later call must reuse the stored order ID.
+    const third = await vm.runInContext(
+        "createBuyNowOrder()", context
+    );
+
+    assert.equal(third, 123);
+    assert.equal(requests.length, 1);
+});

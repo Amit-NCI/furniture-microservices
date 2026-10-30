@@ -8,29 +8,27 @@
 
 <h3 id="total-amount"></h3>
 
-<h4>Select Payment Method:</h4>
+<h4>Order Confirmation</h4>
 
-<label>
-    <input type="radio" name="payment" value="card" checked>
-    Card 💳
-</label>
-
-<br>
-
-<label>
-    <input type="radio" name="payment" value="cod">
-    Cash on Delivery 💵
-</label>
+<p>
+    Online payment is not available yet.
+    Placing an order does not charge your card or collect payment.
+</p>
 
 <br><br>
 
-<button onclick="handleCheckout()">Place Order ✅</button>
+<button id="place-order-btn" onclick="handleCheckout()" disabled>Place Order ✅</button>
 
 <script>
 const params = new URLSearchParams(window.location.search);
 const productId = params.get("product_id");
 
 let total = 0;
+let selectedOrderIds = [];
+let buyNowOrderId = null;
+let buyNowProductReady = false;
+let buyNowCreationUncertain = false;
+let buyNowCreationPromise = null;
 
 // ================= LOAD CHECKOUT =================
 async function loadCheckout() {
@@ -38,15 +36,74 @@ async function loadCheckout() {
     const container = document.getElementById("checkout-items");
     container.innerHTML = "";
     total = 0;
+    selectedOrderIds = [];
+    buyNowProductReady = false;
+    document.getElementById("place-order-btn").disabled = true;
 
     // ================= BUY NOW =================
     if (productId) {
         console.log("🔥 Buy Now Flow");
 
-        const res = await fetch(`${PRODUCT_URL}/api/products/${productId}/`);
-        const product = await res.json();
+        const token = localStorage.getItem("access");
 
-        total = product.price;
+        if (!token) {
+            container.textContent =
+                "Please log in before proceeding to checkout.";
+            return;
+        }
+
+        const id = Number(productId);
+
+        if (!Number.isSafeInteger(id) || id <= 0) {
+            container.textContent = "Invalid product selected.";
+            return;
+        }
+
+        let product;
+
+        try {
+            const res = await fetch(`${PRODUCT_URL}/api/products/${id}/`);
+
+            if (!res.ok) {
+                container.textContent =
+                    "Unable to load this product. Please try again.";
+                return;
+            }
+
+            product = await res.json();
+
+        } catch (error) {
+            console.error("Buy Now product loading failed:", error);
+            container.textContent =
+                "Unable to load this product. Please try again.";
+            return;
+        }
+
+        if (
+            !product ||
+            typeof product !== "object" ||
+            Array.isArray(product)
+        ) {
+            container.textContent = "Invalid product information.";
+            return;
+        }
+
+        const price = Number(product.price);
+
+        if (
+            product.price === null ||
+            product.price === undefined ||
+            !Number.isFinite(price) ||
+            price < 0 ||
+            typeof product.name !== "string" ||
+            !product.name.trim()
+        ) {
+            container.textContent = "Invalid product information.";
+            return;
+        }
+
+        total = price;
+        buyNowProductReady = true;
 
         container.innerHTML = `
             <h3>${product.name}</h3>
@@ -60,10 +117,75 @@ async function loadCheckout() {
     else {
         console.log("🔥 Cart Checkout Flow");
 
-        const cartRes = await fetch(`${ORDER_URL}/api/cart/`);
+        const token = localStorage.getItem("access");
+
+        if (!token) {
+            container.textContent = "Please log in to view your cart.";
+            return;
+        }
+
+        const cartRes = await fetch(`${ORDER_URL}/api/cart/`, {
+            headers: authHeaders()
+        });
+
+        if (!cartRes.ok) {
+            container.textContent =
+                cartRes.status === 401
+                    ? "Your session has expired. Please log in again."
+                    : "Unable to load your cart. Please try again.";
+            return;
+        }
+
         const cartItems = await cartRes.json();
 
-        for (let item of cartItems) {
+        if (!Array.isArray(cartItems)) {
+            container.textContent = "Unexpected cart response.";
+            return;
+        }
+
+        if (cartItems.length === 0) {
+            container.textContent = "Your cart is empty.";
+            document.getElementById("total-amount").textContent = "Total: €0.00";
+            return;
+        }
+
+        // Read the selection saved by the cart page.
+        const storedSelection = sessionStorage.getItem("checkoutSelectedItems");
+
+        let requestedIds;
+
+        try {
+            requestedIds = JSON.parse(storedSelection);
+        } catch (error) {
+            requestedIds = null;
+        }
+
+        if (
+            !Array.isArray(requestedIds) ||
+            requestedIds.length === 0 ||
+            requestedIds.some(id => !Number.isSafeInteger(id) || id <= 0)
+        ) {
+            container.textContent =
+                "No valid cart selection found. Please return to your cart.";
+            return;
+        }
+
+        // Only retain selected IDs belonging to the authenticated cart.
+        const cartIds = new Set(cartItems.map(item => item.id));
+
+        if (requestedIds.some(id => !cartIds.has(id))) {
+            container.textContent =
+                "Your cart has changed. Please return to your cart and select items again.";
+            return;
+        }
+
+        selectedOrderIds = [...new Set(requestedIds)];
+
+        const selectedCartItems = cartItems.filter(
+            item => selectedOrderIds.includes(item.id)
+        );
+
+        for (let item of selectedCartItems) {
 
             const productRes = await fetch(`${PRODUCT_URL}/api/products/${item.product_id}/`);
             const product = await productRes.json();
@@ -85,46 +207,294 @@ async function loadCheckout() {
 
     document.getElementById("total-amount").innerText =
         "Total: €" + total;
+
+    if (selectedOrderIds.length > 0) {
+        document.getElementById("place-order-btn").disabled = false;
+    }
+}
+
+// ================= BUY NOW IDEMPOTENCY =================
+// Keep one key for the current user, product, and checkout attempt.
+// This helper is not connected to order submission yet.
+function prepareBuyNowIdempotencyKey(userId, selectedProductId) {
+    const user = Number(userId);
+    const product = Number(selectedProductId);
+
+    if (
+        !Number.isSafeInteger(user) || user <= 0 ||
+        !Number.isSafeInteger(product) || product <= 0
+    ) {
+        throw new Error("Invalid Buy Now checkout identity.");
+    }
+
+    if (
+        typeof sessionStorage === "undefined" ||
+        typeof sessionStorage.getItem !== "function" ||
+        typeof sessionStorage.setItem !== "function"
+    ) {
+        throw new Error("Secure checkout storage is unavailable.");
+    }
+
+    if (
+        typeof crypto === "undefined" ||
+        typeof crypto.randomUUID !== "function"
+    ) {
+        throw new Error("Secure checkout key generation is unavailable.");
+    }
+
+    const storageKey = "buyNowIdempotencyAttempt";
+    const existing = sessionStorage.getItem(storageKey);
+
+    if (existing !== null) {
+        let attempt;
+
+        try {
+            attempt = JSON.parse(existing);
+        } catch (error) {
+            throw new Error("Stored checkout attempt is invalid.");
+        }
+
+        if (
+            !attempt ||
+            attempt.userId !== user ||
+            attempt.productId !== product ||
+            typeof attempt.key !== "string" ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attempt.key)
+        ) {
+            throw new Error(
+                "A different or invalid checkout attempt is already stored."
+            );
+        }
+
+        return attempt.key;
+    }
+
+    const key = crypto.randomUUID();
+
+    if (
+        typeof key !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key)
+    ) {
+        throw new Error("Unable to generate a valid checkout key.");
+    }
+
+    sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+            userId: user,
+            productId: product,
+            key
+        })
+    );
+
+    return key;
+}
+
+// ================= BUY NOW ORDER CREATION =================
+function createBuyNowOrder() {
+    if (buyNowCreationPromise !== null) {
+        return buyNowCreationPromise;
+    }
+
+    const operation = performBuyNowOrderCreation();
+
+    buyNowCreationPromise = operation;
+
+    // Clear the in-flight reference when the operation settles.
+    // The existing order ID and uncertainty checks remain authoritative.
+    void operation.then(
+        () => {
+            if (buyNowCreationPromise === operation) {
+                buyNowCreationPromise = null;
+            }
+        },
+        () => {
+            if (buyNowCreationPromise === operation) {
+                buyNowCreationPromise = null;
+            }
+        }
+    );
+
+    return operation;
+}
+
+async function performBuyNowOrderCreation() {
+    const id = Number(productId);
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        throw new Error("Invalid Buy Now product ID.");
+    }
+
+    if (!buyNowProductReady) {
+        throw new Error("Buy Now product information is not ready.");
+    }
+
+    if (buyNowCreationUncertain) {
+        throw new Error(
+            "The previous order-creation outcome is uncertain."
+        );
+    }
+
+    // Reuse a successfully created order rather than creating another.
+    if (buyNowOrderId !== null) {
+        return buyNowOrderId;
+    }
+
+    const token = localStorage.getItem("access");
+
+    if (!token) {
+        throw new Error("Please log in before placing an order.");
+    }
+
+    let response;
+
+    try {
+        response = await fetch(`${ORDER_URL}/api/orders/`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({
+                product_id: id,
+                quantity: 1
+            })
+        });
+    } catch (error) {
+        // The server may have created the order before the connection failed.
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to confirm whether the Buy Now order was created."
+        );
+    }
+
+    if (!response.ok) {
+        if (response.status >= 500 || !Number.isInteger(response.status)) {
+            buyNowCreationUncertain = true;
+            throw new Error(
+                "Unable to confirm whether the Buy Now order was created."
+            );
+        }
+
+        throw new Error(
+            "Unable to create the Buy Now order."
+        );
+    }
+
+    let data;
+
+    try {
+        data = await response.json();
+    } catch (error) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to confirm the created Buy Now order ID."
+        );
+    }
+
+    if (
+        !data ||
+        !Number.isSafeInteger(data.order_id) ||
+        data.order_id <= 0
+    ) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Invalid Buy Now order ID returned by the server."
+        );
+    }
+
+    buyNowOrderId = data.order_id;
+    return buyNowOrderId;
 }
 
 // ================= HANDLE CHECKOUT =================
 async function handleCheckout() {
+    const button = document.getElementById("place-order-btn");
+    const token = localStorage.getItem("access");
 
-    let user = JSON.parse(localStorage.getItem("user"));
-
-    if (!user) {
-        alert("Login required");
+    if (!token) {
+        alert("Please log in before placing an order.");
         return;
     }
 
-    let paymentMethod = document.querySelector('input[name="payment"]:checked').value;
+    const user = JSON.parse(localStorage.getItem("user") || "null");
 
-    console.log("Payment:", paymentMethod);
+    if (!user || !Number.isSafeInteger(Number(user.id)) || Number(user.id) <= 0) {
+        alert("Invalid user session. Please log in again.");
+        return;
+    }
 
-    // ================= BUY NOW =================
+    if (
+        !productId &&
+        (
+            selectedOrderIds.length === 0 ||
+            selectedOrderIds.some(
+                id => !Number.isSafeInteger(id) || id <= 0
+            )
+        )
+    ) {
+        alert("No valid items selected for checkout.");
+        return;
+    }
+
+    if (button.disabled) {
+        return;
+    }
+
+    // Buy Now requires a validated product preview.
     if (productId) {
-        await fetch(`${ORDER_URL}/api/orders/`, {
+        if (buyNowCreationUncertain) {
+            alert(
+                "Unable to confirm whether an order was created. " +
+                "Please check your cart and order history before trying again."
+            );
+            return;
+        }
+
+        if (!buyNowProductReady) {
+            alert("Product information is not ready. Please try again.");
+            return;
+        }
+
+        // Order creation will be implemented and tested separately.
+        alert("Buy Now checkout is not yet available.");
+        return;
+    }
+
+    button.disabled = true;
+    let checkoutSucceeded = false;
+    let checkoutOutcomeUncertain = false;
+
+    try {
+        const response = await fetch(`${ORDER_URL}/api/checkout/${user.id}/`, {
             method: "POST",
-            headers: {"Content-Type": "application/json"},
+            headers: authHeaders(),
             body: JSON.stringify({
-                user_id: user.id,
-                product_id: productId,
-                quantity: 1,
-                status: "placed"
+                items: selectedOrderIds
             })
         });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.error || "Unable to place your order.");
+            return;
+        }
+
+        checkoutSucceeded = true;
+        sessionStorage.removeItem("checkoutSelectedItems");
+
+        alert(data.message || "Order placed successfully.");
+        window.location.href = "/orders/";
+
+    } catch (error) {
+        checkoutOutcomeUncertain = true;
+        console.error("Checkout error:", error);
+        alert(
+            "Unable to confirm your order. Please check your order history before trying again."
+        );
+    } finally {
+        if (!checkoutSucceeded && !checkoutOutcomeUncertain) {
+            button.disabled = false;
+        }
     }
-
-    // ================= CART CHECKOUT =================
-    else {
-        await fetch(`${ORDER_URL}/api/checkout/${user.id}/`, {
-            method: "POST"
-        });
-    }
-
-    alert("Payment successful 🎉");
-
-    window.location.href = "/orders/";
 }
 
 document.addEventListener("DOMContentLoaded", loadCheckout);
