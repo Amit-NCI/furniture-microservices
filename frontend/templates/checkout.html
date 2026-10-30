@@ -290,6 +290,58 @@ function prepareBuyNowIdempotencyKey(userId, selectedProductId) {
     return key;
 }
 
+// ================= COMPLETE BUY NOW ATTEMPT =================
+// Call only after successful checkout has been confirmed.
+// Never clear an attempt because of a network error or uncertain outcome.
+function completeBuyNowCheckoutAttempt(userId, selectedProductId) {
+    const user = Number(userId);
+    const product = Number(selectedProductId);
+
+    if (
+        !Number.isSafeInteger(user) || user <= 0 ||
+        !Number.isSafeInteger(product) || product <= 0
+    ) {
+        throw new Error("Invalid Buy Now checkout identity.");
+    }
+
+    if (
+        typeof sessionStorage === "undefined" ||
+        typeof sessionStorage.getItem !== "function" ||
+        typeof sessionStorage.removeItem !== "function"
+    ) {
+        throw new Error("Secure checkout storage is unavailable.");
+    }
+
+    const storageKey = "buyNowIdempotencyAttempt";
+    const existing = sessionStorage.getItem(storageKey);
+
+    if (existing === null) {
+        throw new Error("No checkout attempt is stored.");
+    }
+
+    let attempt;
+
+    try {
+        attempt = JSON.parse(existing);
+    } catch (error) {
+        throw new Error("Stored checkout attempt is invalid.");
+    }
+
+    if (
+        !attempt ||
+        attempt.userId !== user ||
+        attempt.productId !== product ||
+        typeof attempt.key !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(attempt.key)
+    ) {
+        throw new Error(
+            "Cannot complete a different checkout attempt."
+        );
+    }
+
+    sessionStorage.removeItem(storageKey);
+}
+
 // ================= BUY NOW ORDER CREATION =================
 function createBuyNowOrder() {
     if (buyNowCreationPromise !== null) {

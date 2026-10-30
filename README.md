@@ -243,6 +243,32 @@ The Buy Now order-creation helper now includes an `Idempotency-Key` header in it
 
 The frontend tests verify that the request includes the stored key, the same checkout attempt reuses its key, and repeated calls do not create duplicate requests. They also verify that an invalid user session or unavailable secure storage prevents the order API request.
 
-All 24 frontend tests pass. The backend suite previously passed 56 tests, giving 80 passing tests across both suites.
+All 25 frontend tests pass. The backend suite previously passed 56 tests, giving 81 passing tests across both suites.
 
 Buy Now submission is still disabled in the checkout handler. The idempotency database migration has been tested only in disposable PostgreSQL and has not been applied to the live database.
+
+
+### Buy Now checkout attempt completion
+
+The Buy Now checkout page now includes a helper for clearing a completed
+checkout attempt from session storage.
+
+The helper checks the user ID, product ID, and stored idempotency key before
+removing the attempt. It refuses to clear an attempt belonging to another
+user or product.
+
+This allows a future purchase to receive a new idempotency key after the
+previous checkout has been confirmed as completed.
+
+A new frontend regression test checks that another user or product cannot
+clear the stored attempt, that a matching attempt can be cleared, and that
+a later purchase receives a different key.
+
+All 25 frontend tests passed. The Order service backend suite previously
+passed 56 tests, giving 81 passing automated tests across both suites.
+
+The completion helper is not connected to checkout submission yet.
+It must only be called after successful checkout has been confirmed.
+
+Buy Now submission remains disabled. The idempotency database migration
+has not been applied to the live PostgreSQL database.

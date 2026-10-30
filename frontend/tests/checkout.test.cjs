@@ -972,6 +972,87 @@ test("Buy Now idempotency key requires secure storage and UUID generation", () =
     );
 });
 
+test("Buy Now clears a completed checkout attempt only for its owner and product", () => {
+    const values = new Map();
+    let generated = 0;
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                generated++;
+                return generated === 1
+                    ? "123e4567-e89b-42d3-a456-426614174000"
+                    : "123e4567-e89b-42d3-a456-426614174001";
+            }
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    const firstKey = vm.runInContext(
+        "prepareBuyNowIdempotencyKey(10, 5)", context
+    );
+
+    assert.throws(
+        () => vm.runInContext(
+            "completeBuyNowCheckoutAttempt(11, 5)", context
+        ),
+        /different checkout attempt/
+    );
+
+    assert.equal(
+        JSON.parse(values.get("buyNowIdempotencyAttempt")).key,
+        firstKey
+    );
+
+    assert.throws(
+        () => vm.runInContext(
+            "completeBuyNowCheckoutAttempt(10, 6)", context
+        ),
+        /different checkout attempt/
+    );
+
+    assert.equal(
+        JSON.parse(values.get("buyNowIdempotencyAttempt")).key,
+        firstKey
+    );
+
+    vm.runInContext(
+        "completeBuyNowCheckoutAttempt(10, 5)", context
+    );
+
+    assert.equal(values.has("buyNowIdempotencyAttempt"), false);
+
+    const secondKey = vm.runInContext(
+        "prepareBuyNowIdempotencyKey(10, 5)", context
+    );
+
+    assert.notEqual(firstKey, secondKey);
+    assert.equal(generated, 2);
+});
+
 test("Buy Now order creation rejects invalid product ID", async () => {
     const requests = [];
 
