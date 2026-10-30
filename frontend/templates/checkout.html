@@ -346,12 +346,32 @@ async function performBuyNowOrderCreation() {
         throw new Error("Please log in before placing an order.");
     }
 
+    // Prepare the idempotency key before sending an order request.
+    // Reuse the same key for this user, product, and checkout attempt.
+    let user;
+
+    try {
+        user = JSON.parse(localStorage.getItem("user") || "null");
+    } catch (error) {
+        throw new Error("Invalid user session. Please log in again.");
+    }
+
+    if (!user || !Number.isSafeInteger(Number(user.id)) ||
+        Number(user.id) <= 0) {
+        throw new Error("Invalid user session. Please log in again.");
+    }
+
+    const idempotencyKey = prepareBuyNowIdempotencyKey(user.id, id);
+
     let response;
 
     try {
         response = await fetch(`${ORDER_URL}/api/orders/`, {
             method: "POST",
-            headers: authHeaders(),
+            headers: {
+                ...authHeaders(),
+                "Idempotency-Key": idempotencyKey
+            },
             body: JSON.stringify({
                 product_id: id,
                 quantity: 1

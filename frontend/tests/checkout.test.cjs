@@ -1094,6 +1094,111 @@ test("Buy Now order creation rejects uncertain previous outcome", async () => {
     assert.equal(requests.length, 0);
 });
 
+test("Buy Now refuses order creation with an invalid user session", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 0 });
+                return null;
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Order API must not be called");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Invalid user session. Please log in again."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+});
+
+test("Buy Now refuses order creation without secure session storage", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("Order API must not be called");
+        },
+        console
+    };
+
+    // sessionStorage is deliberately unavailable.
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Secure checkout storage is unavailable."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+});
+
 test("Buy Now creates one order and reuses the returned order ID", async () => {
     const requests = [];
 
@@ -1117,7 +1222,23 @@ test("Buy Now creates one order and reuses the returned order ID", async () => {
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {
@@ -1179,6 +1300,29 @@ test("Buy Now creates one order and reuses the returned order ID", async () => {
         "Bearer mock-jwt-token"
     );
 
+    // The order request must include the persistent idempotency key.
+    const expectedKey = "123e4567-e89b-42d3-a456-426614174000";
+
+    assert.equal(
+        requests[0].options.headers["Idempotency-Key"],
+        expectedKey
+    );
+
+    const storedAttempt = JSON.parse(
+        context.sessionStorage.getItem("buyNowIdempotencyAttempt")
+    );
+
+    assert.deepEqual(storedAttempt, {
+        userId: 10,
+        productId: 5,
+        key: expectedKey
+    });
+
+    assert.equal(
+        vm.runInContext("prepareBuyNowIdempotencyKey(10, 5)", context),
+        expectedKey
+    );
+
     // Calling again must reuse the existing order ID.
     const secondOrderId = await vm.runInContext(
         "createBuyNowOrder()", context
@@ -1213,7 +1357,23 @@ test("Buy Now network failure blocks another order-creation attempt", async () =
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {
@@ -1287,7 +1447,23 @@ test("Buy Now HTTP 500 marks creation uncertain and blocks retry", async () => {
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {
@@ -1365,7 +1541,23 @@ test("Buy Now invalid order ID marks creation uncertain and blocks retry", async
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {
@@ -1449,7 +1641,23 @@ test("Buy Now malformed JSON marks creation uncertain and blocks retry", async (
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {
@@ -1538,7 +1746,23 @@ test("Buy Now simultaneous calls share one order-creation request", async () => 
         },
         localStorage: {
             getItem(key) {
-                return key === "access" ? "mock-jwt-token" : null;
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
             }
         },
         async fetch(url, options) {

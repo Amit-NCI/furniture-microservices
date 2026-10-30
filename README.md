@@ -228,11 +228,21 @@ instead of creating an unprotected checkout key.
 Three new frontend tests cover page refreshes, different users or products,
 and missing secure browser features.
 
-All 22 frontend tests passed. The backend test suite previously passed
-56 tests, giving 78 passing automated tests across both suites.
+All 24 frontend tests passed. The backend test suite previously passed
+56 tests, giving 80 passing automated tests across both suites.
 
 This is preparation only. The helper is not yet connected to the order
 creation request, and Buy Now submission remains disabled.
 
 The idempotency database migration has only been tested against disposable
 PostgreSQL. It has not been applied to the live database.
+
+### Buy Now idempotency header testing
+
+The Buy Now order-creation helper now includes an `Idempotency-Key` header in its order API request. The key is generated with `crypto.randomUUID()` and stored in `sessionStorage` for the current user, product, and checkout attempt.
+
+The frontend tests verify that the request includes the stored key, the same checkout attempt reuses its key, and repeated calls do not create duplicate requests. They also verify that an invalid user session or unavailable secure storage prevents the order API request.
+
+All 24 frontend tests pass. The backend suite previously passed 56 tests, giving 80 passing tests across both suites.
+
+Buy Now submission is still disabled in the checkout handler. The idempotency database migration has been tested only in disposable PostgreSQL and has not been applied to the live database.
