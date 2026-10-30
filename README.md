@@ -272,3 +272,35 @@ It must only be called after successful checkout has been confirmed.
 
 Buy Now submission remains disabled. The idempotency database migration
 has not been applied to the live PostgreSQL database.
+
+### Buy Now checkout state persistence and page-refresh recovery
+
+The Buy Now order-creation helper now saves the checkout attempt state in
+browser session storage.
+
+Before sending an order-creation request, it saves the attempt as `pending`.
+This records that the request may have reached the backend. If the page is
+refreshed while an attempt is pending, the frontend blocks another order
+request instead of risking a duplicate order.
+
+After receiving a valid order ID, the helper saves the attempt as `confirmed`
+along with that order ID. If the page is refreshed, the frontend can restore
+the confirmed order ID without sending another order-creation request.
+
+The recovery logic checks the stored user ID, product ID, idempotency key,
+and order ID. Invalid confirmed order IDs are rejected. The idempotency key
+is not removed when an order is created because order creation alone does
+not mean checkout has been completed.
+
+The frontend regression tests cover pending attempts after refresh,
+confirmed-order recovery, invalid stored order IDs, and duplicate-request
+prevention.
+
+The latest frontend suite passed all 29 tests. The Order service backend
+suite previously passed all 56 tests, giving 85 passing automated tests
+across the two suites.
+
+Buy Now submission remains disabled. The checkout completion helper is not
+connected to the submission handler. The backend idempotency migration has
+only been tested in disposable PostgreSQL and has not been applied to the
+live database. No live orders were created during these frontend tests.

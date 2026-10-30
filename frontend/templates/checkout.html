@@ -415,6 +415,56 @@ async function performBuyNowOrderCreation() {
 
     const idempotencyKey = prepareBuyNowIdempotencyKey(user.id, id);
 
+    // Record that an order request may reach the server.
+    // This state survives a page refresh.
+    const storageKey = "buyNowIdempotencyAttempt";
+    const storedAttempt = JSON.parse(sessionStorage.getItem(storageKey));
+
+    if (
+        !storedAttempt ||
+        storedAttempt.userId !== Number(user.id) ||
+        storedAttempt.productId !== id ||
+        storedAttempt.key !== idempotencyKey
+    ) {
+        throw new Error(
+            "A previous Buy Now attempt must be resolved before retrying."
+        );
+    }
+
+    // A confirmed order may be restored after a page refresh.
+    // Do not send another POST or clear the idempotency key.
+    if (storedAttempt.state === "confirmed") {
+        if (
+            !Number.isSafeInteger(storedAttempt.orderId) ||
+            storedAttempt.orderId <= 0
+        ) {
+            throw new Error(
+                "The stored confirmed Buy Now order ID is invalid."
+            );
+        }
+
+        buyNowOrderId = storedAttempt.orderId;
+        return buyNowOrderId;
+    }
+
+    // An unresolved request must never be submitted again automatically.
+    if (
+        storedAttempt.state !== undefined &&
+        storedAttempt.state !== "prepared"
+    ) {
+        throw new Error(
+            "A previous Buy Now attempt must be resolved before retrying."
+        );
+    }
+
+    sessionStorage.setItem(
+        storageKey,
+        JSON.stringify({
+            ...storedAttempt,
+            state: "pending"
+        })
+    );
+
     let response;
 
     try {
@@ -469,6 +519,50 @@ async function performBuyNowOrderCreation() {
         buyNowCreationUncertain = true;
         throw new Error(
             "Invalid Buy Now order ID returned by the server."
+        );
+    }
+
+    // Persist the confirmed order before relying on in-memory state.
+    // Order creation is confirmed, but checkout is not yet completed.
+    let confirmationAttempt;
+
+    try {
+        confirmationAttempt = JSON.parse(
+            sessionStorage.getItem(storageKey)
+        );
+    } catch (error) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to verify the stored Buy Now checkout attempt."
+        );
+    }
+
+    if (
+        !confirmationAttempt ||
+        confirmationAttempt.userId !== Number(user.id) ||
+        confirmationAttempt.productId !== id ||
+        confirmationAttempt.key !== idempotencyKey ||
+        confirmationAttempt.state !== "pending"
+    ) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "The stored Buy Now checkout attempt has changed."
+        );
+    }
+
+    try {
+        sessionStorage.setItem(
+            storageKey,
+            JSON.stringify({
+                ...confirmationAttempt,
+                state: "confirmed",
+                orderId: data.order_id
+            })
+        );
+    } catch (error) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to save the confirmed Buy Now order."
         );
     }
 

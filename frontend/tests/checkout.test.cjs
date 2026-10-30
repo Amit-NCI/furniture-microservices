@@ -1396,7 +1396,9 @@ test("Buy Now creates one order and reuses the returned order ID", async () => {
     assert.deepEqual(storedAttempt, {
         userId: 10,
         productId: 5,
-        key: expectedKey
+        key: expectedKey,
+        state: "confirmed",
+        orderId: 123
     });
 
     assert.equal(
@@ -1413,6 +1415,358 @@ test("Buy Now creates one order and reuses the returned order ID", async () => {
 
     // No second POST request should be made.
     assert.equal(requests.length, 1);
+});
+
+test("Buy Now persists pending state before sending an order request", async () => {
+    const values = new Map();
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            const attempt = JSON.parse(
+                values.get("buyNowIdempotencyAttempt")
+            );
+
+            assert.equal(attempt.userId, 10);
+            assert.equal(attempt.productId, 5);
+            assert.equal(attempt.state, "pending");
+            assert.equal(
+                attempt.key,
+                options.headers["Idempotency-Key"]
+            );
+
+            return {
+                ok: true,
+                status: 200,
+                async json() {
+                    return { order_id: 123 };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    const orderId = await vm.runInContext(
+        "createBuyNowOrder()", context
+    );
+
+    assert.equal(orderId, 123);
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now blocks a pending attempt after page refresh", async () => {
+    const storedAttempt = {
+        userId: 10,
+        productId: 5,
+        key: "123e4567-e89b-42d3-a456-426614174000",
+        state: "pending"
+    };
+
+    const values = new Map([
+        ["buyNowIdempotencyAttempt", JSON.stringify(storedAttempt)]
+    ]);
+
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("No order request should be sent");
+        },
+        console
+    };
+
+    // A new JavaScript context represents a refreshed checkout page.
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message:
+                "A previous Buy Now attempt must be resolved before retrying."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+
+    assert.deepEqual(
+        JSON.parse(values.get("buyNowIdempotencyAttempt")),
+        storedAttempt
+    );
+});
+
+test("Buy Now restores a confirmed order after page refresh", async () => {
+    const storedAttempt = {
+        userId: 10,
+        productId: 5,
+        key: "123e4567-e89b-42d3-a456-426614174000",
+        state: "confirmed",
+        orderId: 123
+    };
+
+    const values = new Map([
+        ["buyNowIdempotencyAttempt", JSON.stringify(storedAttempt)]
+    ]);
+
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("No order request should be sent");
+        },
+        console
+    };
+
+    // A new JavaScript context represents a refreshed checkout page.
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    const orderId = await vm.runInContext(
+        "createBuyNowOrder()", context
+    );
+
+    assert.equal(orderId, 123);
+    assert.equal(requests.length, 0);
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        123
+    );
+
+    assert.deepEqual(
+        JSON.parse(values.get("buyNowIdempotencyAttempt")),
+        storedAttempt
+    );
+});
+
+test("Buy Now rejects invalid confirmed order IDs after refresh", async () => {
+    const invalidOrderIds = [
+        0,
+        -1,
+        "123",
+        null,
+        1.5,
+        Number.MAX_SAFE_INTEGER + 1
+    ];
+
+    for (const invalidOrderId of invalidOrderIds) {
+        const storedAttempt = {
+            userId: 10,
+            productId: 5,
+            key: "123e4567-e89b-42d3-a456-426614174000",
+            state: "confirmed",
+            orderId: invalidOrderId
+        };
+
+        const values = new Map([
+            ["buyNowIdempotencyAttempt", JSON.stringify(storedAttempt)]
+        ]);
+
+        const requests = [];
+
+        const context = {
+            URLSearchParams,
+            ORDER_URL: "",
+            authHeaders() {
+                return {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer mock-jwt-token"
+                };
+            },
+            window: {
+                location: {
+                    search: "?product_id=5",
+                    href: "/checkout/?product_id=5"
+                }
+            },
+            document: {
+                addEventListener() {}
+            },
+            localStorage: {
+                getItem(key) {
+                    if (key === "access") return "mock-jwt-token";
+                    if (key === "user") {
+                        return JSON.stringify({ id: 10 });
+                    }
+                    return null;
+                }
+            },
+            sessionStorage: {
+                getItem(key) {
+                    return values.get(key) ?? null;
+                },
+                setItem(key, value) {
+                    values.set(key, String(value));
+                },
+                removeItem(key) {
+                    values.delete(key);
+                }
+            },
+            crypto: {
+                randomUUID() {
+                    return "123e4567-e89b-42d3-a456-426614174000";
+                }
+            },
+            async fetch(url, options) {
+                requests.push({ url, options });
+                throw new Error("No order request should be sent");
+            },
+            console
+        };
+
+        vm.createContext(context);
+        vm.runInContext(checkoutScript, context);
+        vm.runInContext("buyNowProductReady = true", context);
+
+        await assert.rejects(
+            vm.runInContext("createBuyNowOrder()", context),
+            {
+                message:
+                    "The stored confirmed Buy Now order ID is invalid."
+            }
+        );
+
+        assert.equal(
+            requests.length,
+            0,
+            `Unexpected request for order ID ${invalidOrderId}`
+        );
+
+        assert.deepEqual(
+            JSON.parse(values.get("buyNowIdempotencyAttempt")),
+            storedAttempt
+        );
+    }
 });
 
 test("Buy Now network failure blocks another order-creation attempt", async () => {
