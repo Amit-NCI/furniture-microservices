@@ -302,6 +302,26 @@ idempotency migration has not been applied to the live database.
 
 No live orders or customer database records were used for these tests.
 
+### Buy Now HTTP 401 and 403 authentication retry protection
+
+The Buy Now frontend now includes regression tests for HTTP 401 Unauthorized and HTTP 403 Forbidden responses from the order service.
+
+These responses indicate authentication or permission failures. The frontend rejects order creation without treating the request as successful.
+
+The tests verify that:
+
+- HTTP 401 and HTTP 403 do not produce a confirmed Buy Now order ID.
+- The pending idempotency attempt remains stored in sessionStorage.
+- Another order-creation request is blocked on the same page.
+- A page refresh does not allow another order-creation request.
+- Only one mocked order-creation POST is sent for each test.
+
+This milestone adds regression tests only. No production checkout behavior was changed.
+
+Validation: All 39 frontend checkout tests passed, with zero failures.
+
+Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
+
 ### Buy Now HTTP 409 conflict retry protection
 
 The Buy Now frontend now has a regression test for HTTP 409 Conflict responses from the order service.

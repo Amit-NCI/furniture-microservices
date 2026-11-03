@@ -2776,6 +2776,248 @@ test("Buy Now HTTP 409 conflict preserves pending state and blocks retries", asy
     assert.equal(requests.length, 1);
 });
 
+test("Buy Now HTTP 401 unauthorized preserves pending state and blocks retries", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: false,
+                status: 401
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to create the Buy Now order."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        false
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // A second attempt must not send another request.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "A previous Buy Now attempt must be resolved before retrying."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+
+    const pending = JSON.parse(
+        context.sessionStorage.getItem("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(pending.state, "pending");
+    assert.equal(pending.userId, 10);
+    assert.equal(pending.productId, 5);
+
+    // Recreate the checkout script context to simulate a page refresh.
+    const refreshed = {
+        ...context,
+        sessionStorage: context.sessionStorage
+    };
+
+    vm.createContext(refreshed);
+    vm.runInContext(checkoutScript, refreshed);
+    vm.runInContext("buyNowProductReady = true", refreshed);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", refreshed),
+        {
+            message: "A previous Buy Now attempt must be resolved before retrying."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+});
+
+test("Buy Now HTTP 403 forbidden preserves pending state and blocks retries", async () => {
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            values: new Map(),
+            getItem(key) {
+                return this.values.has(key) ? this.values.get(key) : null;
+            },
+            setItem(key, value) {
+                this.values.set(key, String(value));
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            if (url !== "/api/orders/") {
+                throw new Error("Unexpected API request");
+            }
+
+            return {
+                ok: false,
+                status: 403
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to create the Buy Now order."
+        }
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        false
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "/api/orders/");
+    assert.equal(requests[0].options.method, "POST");
+
+    // A second attempt must not send another request.
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "A previous Buy Now attempt must be resolved before retrying."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+
+    const pending = JSON.parse(
+        context.sessionStorage.getItem("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(pending.state, "pending");
+    assert.equal(pending.userId, 10);
+    assert.equal(pending.productId, 5);
+
+    // Recreate the checkout script context to simulate a page refresh.
+    const refreshed = {
+        ...context,
+        sessionStorage: context.sessionStorage
+    };
+
+    vm.createContext(refreshed);
+    vm.runInContext(checkoutScript, refreshed);
+    vm.runInContext("buyNowProductReady = true", refreshed);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", refreshed),
+        {
+            message: "A previous Buy Now attempt must be resolved before retrying."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+});
+
 test("Buy Now invalid order ID marks creation uncertain and blocks retry", async () => {
     const requests = [];
 
