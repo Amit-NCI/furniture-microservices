@@ -302,6 +302,26 @@ idempotency migration has not been applied to the live database.
 
 No live orders or customer database records were used for these tests.
 
+### Buy Now HTTP 409 conflict retry protection
+
+The Buy Now frontend now has a regression test for HTTP 409 Conflict responses from the order service.
+
+The backend returns HTTP 409 when an idempotency key is reused with different order details. The frontend must not treat this response as successful order creation.
+
+The test verifies that:
+
+- An HTTP 409 response does not produce a confirmed Buy Now order ID.
+- The pending idempotency attempt remains stored in sessionStorage.
+- Another order-creation request is blocked on the same page.
+- A page refresh does not allow another order-creation request.
+- Only one mocked order-creation POST is sent.
+
+This milestone adds test coverage only. No production checkout behavior was changed.
+
+Validation: All 37 frontend checkout tests passed, with zero failures.
+
+Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
+
 ### Buy Now HTTP 400 retry protection
 
 Added a frontend regression test for HTTP 400 responses during
