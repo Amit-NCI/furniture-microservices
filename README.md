@@ -302,6 +302,34 @@ idempotency migration has not been applied to the live database.
 
 No live orders or customer database records were used for these tests.
 
+### Buy Now confirmed-state persistence verification
+
+The Buy Now order-creation helper now checks that the confirmed order
+record was actually saved in browser session storage before reporting
+success.
+
+After receiving a valid order ID from the backend, the helper saves
+the checkout attempt as confirmed. It then reads the stored record
+back and checks the user ID, product ID, idempotency key, confirmed
+state, and order ID.
+
+If the confirmed record is missing, corrupted, or does not match,
+the helper marks the order-creation outcome as uncertain and blocks
+another order-creation attempt.
+
+I added a regression test that simulates browser storage silently
+ignoring the confirmed-state write without throwing an error.
+
+All 35 frontend checkout tests passed after the fix. The previously
+verified backend suite had 56 passing tests, but it was not rerun
+for this frontend milestone.
+
+Buy Now submission remains disabled. The checkout completion helper
+is not connected to the submission handler, and the backend
+idempotency migration has not been applied to the live database.
+
+No live orders or customer database records were used.
+
 ### Buy Now checkout state persistence and page-refresh recovery
 
 The Buy Now order-creation helper now saves the checkout attempt state in

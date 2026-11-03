@@ -592,6 +592,35 @@ async function performBuyNowOrderCreation() {
         );
     }
 
+    // Confirm that the order ID was actually saved before reporting success.
+    // A storage write can silently fail without throwing an exception.
+    let persistedConfirmation;
+
+    try {
+        persistedConfirmation = JSON.parse(
+            sessionStorage.getItem(storageKey)
+        );
+    } catch (error) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to verify the confirmed Buy Now order."
+        );
+    }
+
+    if (
+        !persistedConfirmation ||
+        persistedConfirmation.userId !== Number(user.id) ||
+        persistedConfirmation.productId !== id ||
+        persistedConfirmation.key !== idempotencyKey ||
+        persistedConfirmation.state !== "confirmed" ||
+        persistedConfirmation.orderId !== data.order_id
+    ) {
+        buyNowCreationUncertain = true;
+        throw new Error(
+            "Unable to verify the confirmed Buy Now order."
+        );
+    }
+
     buyNowOrderId = data.order_id;
     return buyNowOrderId;
 }

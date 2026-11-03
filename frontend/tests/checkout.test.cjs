@@ -2050,6 +2050,116 @@ test("Buy Now blocks retries when confirmed state cannot be saved", async () => 
     assert.equal(confirmationWriteAttempts, 1);
 });
 
+test("Buy Now rejects silently lost confirmed state and blocks retries", async () => {
+    const values = new Map();
+    const requests = [];
+    let confirmationWriteAttempts = 0;
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") return JSON.stringify({ id: 10 });
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                const attempt = JSON.parse(value);
+
+                if (attempt.state === "confirmed") {
+                    confirmationWriteAttempts++;
+                    return;
+                }
+
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            return {
+                ok: true,
+                status: 201,
+                async json() {
+                    return { order_id: 123 };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to verify the confirmed Buy Now order."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(confirmationWriteAttempts, 1);
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    const storedAttempt = JSON.parse(
+        values.get("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(storedAttempt.state, "pending");
+    assert.equal(storedAttempt.userId, 10);
+    assert.equal(storedAttempt.productId, 5);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(confirmationWriteAttempts, 1);
+});
+
 test("Buy Now rejects unexpected stored checkout states without creating orders", async () => {
     const invalidStates = [
         "failed",
