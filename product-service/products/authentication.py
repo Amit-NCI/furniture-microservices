@@ -4,12 +4,13 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 
 class TokenUser:
     """
-    Lightweight user object built from JWT claims only.
-    No database lookup — reads directly from the token payload.
+    Lightweight authenticated user built from validated JWT claims.
+    No database lookup is performed.
     """
-    def __init__(self, payload):
-        self.id = payload.get('user_id')
-        self.role = payload.get('role', 'customer')
+
+    def __init__(self, user_id, role):
+        self.id = user_id
+        self.role = role
         self.is_authenticated = True
         self.is_active = True
 
@@ -19,11 +20,26 @@ class TokenUser:
 
 class JWTTokenAuthentication(JWTAuthentication):
     """
-    Validates the token signature only, then builds a
-    TokenUser from the payload claims. No DB lookup.
+    Uses SimpleJWT to validate the token, then checks
+    application-specific claims before creating TokenUser.
     """
+
     def get_user(self, validated_token):
-        try:
-            return TokenUser(validated_token.payload)
-        except Exception:
-            raise InvalidToken('Token contained no valid user info')
+        payload = validated_token.payload
+
+        user_id = payload.get("user_id")
+        role = payload.get("role")
+
+        if user_id is None or isinstance(user_id, bool):
+            raise InvalidToken("Token is missing a valid user_id")
+
+        if not isinstance(user_id, (int, str)):
+            raise InvalidToken("Token contains an invalid user_id")
+
+        if isinstance(user_id, str) and not user_id.strip():
+            raise InvalidToken("Token contains an empty user_id")
+
+        if role not in ("customer", "staff", "admin"):
+            raise InvalidToken("Token contains an invalid role")
+
+        return TokenUser(user_id=user_id, role=role)

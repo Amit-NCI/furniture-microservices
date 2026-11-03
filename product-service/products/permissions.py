@@ -15,10 +15,28 @@ class IsStaffUser(BasePermission):
 
 class IsCustomerOrStaff(BasePermission):
     """
-    Allows any authenticated user (customer or staff).
+    Allows only authenticated customers and staff.
     """
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
+        user = getattr(request, "user", None)
+
+        return bool(
+            user
+            and user.is_authenticated
+            and getattr(user, "role", None) in ("customer", "staff")
+        )
+
+
+class IsAdminUser(BasePermission):
+    """
+    Allows only authenticated users with the admin JWT role.
+    """
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+
+        return bool(
+            user
+            and user.is_authenticated
+            and getattr(user, "role", None) == "admin"
         )
