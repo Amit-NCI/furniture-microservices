@@ -302,6 +302,30 @@ idempotency migration has not been applied to the live database.
 
 No live orders or customer database records were used for these tests.
 
+### Buy Now HTTP 400 retry protection
+
+Added a frontend regression test for HTTP 400 responses during
+Buy Now order creation.
+
+The test verifies that an HTTP 400 response does not report
+successful order creation and that the checkout attempt remains
+stored as pending.
+
+It also verifies that a second order-creation request is blocked
+in the current page and after a simulated page refresh.
+
+The existing frontend implementation already provided this
+protection, so no production code changes were necessary.
+
+All 36 frontend checkout tests passed, including the new HTTP 400
+regression test. The previously verified backend suite had 56
+passing tests, but it was not rerun for this milestone.
+
+Buy Now submission remains disabled, and the backend idempotency
+migration has not been applied to the live database.
+
+No live orders or customer database records were used.
+
 ### Buy Now confirmed-state persistence verification
 
 The Buy Now order-creation helper now checks that the confirmed order
