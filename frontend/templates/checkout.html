@@ -339,6 +339,16 @@ function completeBuyNowCheckoutAttempt(userId, selectedProductId) {
         );
     }
 
+    if (
+        attempt.state !== "confirmed" ||
+        !Number.isSafeInteger(attempt.orderId) ||
+        attempt.orderId <= 0
+    ) {
+        throw new Error(
+            "Cannot complete checkout without a valid confirmed Buy Now order."
+        );
+    }
+
     sessionStorage.removeItem(storageKey);
 }
 

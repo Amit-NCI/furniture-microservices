@@ -302,6 +302,24 @@ idempotency migration has not been applied to the live database.
 
 No live orders or customer database records were used for these tests.
 
+### Buy Now confirmed-order completion safety
+
+The Buy Now completion helper now refuses to clear a stored idempotency attempt unless the attempt has a confirmed state and a valid positive integer order ID.
+
+This prevents prepared, pending, and invalid confirmed attempts from being cleared prematurely. Keeping unresolved attempts in sessionStorage helps prevent accidental duplicate order creation after a retry or page refresh.
+
+The regression tests verify that:
+
+- Attempts without a confirmed state cannot be cleared.
+- Prepared and pending attempts remain stored.
+- Confirmed attempts with missing or invalid order IDs remain stored.
+- A valid confirmed attempt can be cleared.
+- The existing user and product ownership checks continue to work.
+
+Validation: All 40 frontend checkout tests passed, with zero failures.
+
+Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
+
 ### Buy Now HTTP 401 and 403 authentication retry protection
 
 The Buy Now frontend now includes regression tests for HTTP 401 Unauthorized and HTTP 403 Forbidden responses from the order service.

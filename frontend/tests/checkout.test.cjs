@@ -1039,6 +1039,16 @@ test("Buy Now clears a completed checkout attempt only for its owner and product
         firstKey
     );
 
+    const storedAttempt = JSON.parse(
+        values.get("buyNowIdempotencyAttempt")
+    );
+
+    values.set("buyNowIdempotencyAttempt", JSON.stringify({
+        ...storedAttempt,
+        state: "confirmed",
+        orderId: 42
+    }));
+
     vm.runInContext(
         "completeBuyNowCheckoutAttempt(10, 5)", context
     );
@@ -1051,6 +1061,82 @@ test("Buy Now clears a completed checkout attempt only for its owner and product
 
     assert.notEqual(firstKey, secondKey);
     assert.equal(generated, 2);
+});
+
+test("Buy Now completion refuses unconfirmed or invalid order attempts", () => {
+    const storageKey = "buyNowIdempotencyAttempt";
+    const key = "123e4567-e89b-42d3-a456-426614174000";
+    const values = new Map();
+
+    const context = {
+        URLSearchParams,
+        window: {
+            location: {
+                search: "?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        sessionStorage: {
+            getItem(name) {
+                return values.get(name) ?? null;
+            },
+            setItem(name, value) {
+                values.set(name, String(value));
+            },
+            removeItem(name) {
+                values.delete(name);
+            }
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+
+    const attempts = [
+        { userId: 10, productId: 5, key },
+        { userId: 10, productId: 5, key, state: "prepared" },
+        { userId: 10, productId: 5, key, state: "pending" },
+        { userId: 10, productId: 5, key, state: "confirmed" },
+        { userId: 10, productId: 5, key, state: "confirmed", orderId: 0 },
+        { userId: 10, productId: 5, key, state: "confirmed", orderId: -1 },
+        { userId: 10, productId: 5, key, state: "confirmed", orderId: "42" }
+    ];
+
+    for (const attempt of attempts) {
+        const stored = JSON.stringify(attempt);
+        values.set(storageKey, stored);
+
+        assert.throws(
+            () => vm.runInContext(
+                "completeBuyNowCheckoutAttempt(10, 5)", context
+            ),
+            /confirmed Buy Now order/,
+            `Invalid attempt was accepted: ${stored}`
+        );
+
+        assert.equal(
+            values.get(storageKey),
+            stored,
+            "An unconfirmed or invalid attempt must remain stored."
+        );
+    }
+
+    values.set(storageKey, JSON.stringify({
+        userId: 10,
+        productId: 5,
+        key,
+        state: "confirmed",
+        orderId: 42
+    }));
+
+    vm.runInContext(
+        "completeBuyNowCheckoutAttempt(10, 5)", context
+    );
+
+    assert.equal(values.has(storageKey), false);
 });
 
 test("Buy Now order creation rejects invalid product ID", async () => {
