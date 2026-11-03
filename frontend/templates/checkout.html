@@ -465,6 +465,32 @@ async function performBuyNowOrderCreation() {
         })
     );
 
+    // Verify the pending record before sending an order request.
+    // A missing record could allow a duplicate order after refresh.
+    let persistedAttempt;
+
+    try {
+        persistedAttempt = JSON.parse(
+            sessionStorage.getItem(storageKey)
+        );
+    } catch (error) {
+        throw new Error(
+            "Unable to verify the pending Buy Now checkout attempt."
+        );
+    }
+
+    if (
+        !persistedAttempt ||
+        persistedAttempt.userId !== Number(user.id) ||
+        persistedAttempt.productId !== id ||
+        persistedAttempt.key !== idempotencyKey ||
+        persistedAttempt.state !== "pending"
+    ) {
+        throw new Error(
+            "Unable to verify the pending Buy Now checkout attempt."
+        );
+    }
+
     let response;
 
     try {

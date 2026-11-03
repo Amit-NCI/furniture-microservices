@@ -1769,6 +1769,477 @@ test("Buy Now rejects invalid confirmed order IDs after refresh", async () => {
     }
 });
 
+test("Buy Now rejects corrupted checkout storage without sending an order", async () => {
+    const values = new Map([
+        ["buyNowIdempotencyAttempt", "{invalid-json"]
+    ]);
+
+    const requests = [];
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") {
+                    return JSON.stringify({ id: 10 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("No order request should be sent");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Stored checkout attempt is invalid."
+        }
+    );
+
+    assert.equal(requests.length, 0);
+    assert.equal(
+        values.get("buyNowIdempotencyAttempt"),
+        "{invalid-json"
+    );
+});
+
+test("Buy Now refuses order creation when pending state cannot be saved", async () => {
+    const values = new Map();
+    const requests = [];
+    let pendingWriteAttempts = 0;
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") {
+                    return JSON.stringify({ id: 10 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                const attempt = JSON.parse(value);
+
+                if (attempt.state === "pending") {
+                    pendingWriteAttempts++;
+                    throw new Error("Simulated pending storage failure");
+                }
+
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("No order request should be sent");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Simulated pending storage failure"
+        }
+    );
+
+    assert.equal(pendingWriteAttempts, 1);
+    assert.equal(requests.length, 0);
+    assert.equal(vm.runInContext("buyNowOrderId", context), null);
+
+    const storedAttempt = JSON.parse(
+        values.get("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(storedAttempt.userId, 10);
+    assert.equal(storedAttempt.productId, 5);
+    assert.equal(
+        storedAttempt.key,
+        "123e4567-e89b-42d3-a456-426614174000"
+    );
+    assert.equal(storedAttempt.state, undefined);
+});
+
+test("Buy Now blocks retries when confirmed state cannot be saved", async () => {
+    const values = new Map();
+    const requests = [];
+    let confirmationWriteAttempts = 0;
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") {
+                    return JSON.stringify({ id: 10 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                const attempt = JSON.parse(value);
+
+                if (attempt.state === "confirmed") {
+                    confirmationWriteAttempts++;
+                    throw new Error("Simulated confirmation storage failure");
+                }
+
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+
+            return {
+                ok: true,
+                status: 201,
+                async json() {
+                    return { order_id: 123 };
+                }
+            };
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to save the confirmed Buy Now order."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(confirmationWriteAttempts, 1);
+
+    assert.equal(
+        vm.runInContext("buyNowCreationUncertain", context),
+        true
+    );
+
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    const storedAttempt = JSON.parse(
+        values.get("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(storedAttempt.state, "pending");
+    assert.equal(storedAttempt.userId, 10);
+    assert.equal(storedAttempt.productId, 5);
+    assert.equal(
+        storedAttempt.key,
+        requests[0].options.headers["Idempotency-Key"]
+    );
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "The previous order-creation outcome is uncertain."
+        }
+    );
+
+    assert.equal(requests.length, 1);
+    assert.equal(confirmationWriteAttempts, 1);
+});
+
+test("Buy Now rejects unexpected stored checkout states without creating orders", async () => {
+    const invalidStates = [
+        "failed",
+        "cancelled",
+        "completed",
+        "",
+        null,
+        123,
+        false
+    ];
+
+    for (const state of invalidStates) {
+        const storedAttempt = {
+            userId: 10,
+            productId: 5,
+            key: "123e4567-e89b-42d3-a456-426614174000",
+            state
+        };
+
+        const originalValue = JSON.stringify(storedAttempt);
+        const values = new Map([
+            ["buyNowIdempotencyAttempt", originalValue]
+        ]);
+
+        const requests = [];
+
+        const context = {
+            URLSearchParams,
+            ORDER_URL: "",
+            authHeaders() {
+                return {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer mock-jwt-token"
+                };
+            },
+            window: {
+                location: {
+                    search: "?product_id=5",
+                    href: "/checkout/?product_id=5"
+                }
+            },
+            document: {
+                addEventListener() {}
+            },
+            localStorage: {
+                getItem(key) {
+                    if (key === "access") return "mock-jwt-token";
+                    if (key === "user") {
+                        return JSON.stringify({ id: 10 });
+                    }
+                    return null;
+                }
+            },
+            sessionStorage: {
+                getItem(key) {
+                    return values.get(key) ?? null;
+                },
+                setItem(key, value) {
+                    values.set(key, String(value));
+                },
+                removeItem(key) {
+                    values.delete(key);
+                }
+            },
+            crypto: {
+                randomUUID() {
+                    return "123e4567-e89b-42d3-a456-426614174000";
+                }
+            },
+            async fetch(url, options) {
+                requests.push({ url, options });
+                throw new Error("No order request should be sent");
+            },
+            console
+        };
+
+        vm.createContext(context);
+        vm.runInContext(checkoutScript, context);
+        vm.runInContext("buyNowProductReady = true", context);
+
+        await assert.rejects(
+            vm.runInContext("createBuyNowOrder()", context),
+            {
+                message:
+                    "A previous Buy Now attempt must be resolved before retrying."
+            }
+        );
+
+        assert.equal(
+            requests.length,
+            0,
+            `Unexpected API request for state ${JSON.stringify(state)}`
+        );
+
+        assert.equal(
+            values.get("buyNowIdempotencyAttempt"),
+            originalValue
+        );
+    }
+});
+
+test("Buy Now blocks order creation when pending state silently fails to persist", async () => {
+    const values = new Map();
+    const requests = [];
+    let pendingWriteAttempts = 0;
+
+    const context = {
+        URLSearchParams,
+        ORDER_URL: "",
+        authHeaders() {
+            return {
+                "Content-Type": "application/json",
+                Authorization: "Bearer mock-jwt-token"
+            };
+        },
+        window: {
+            location: {
+                search: "?product_id=5",
+                href: "/checkout/?product_id=5"
+            }
+        },
+        document: {
+            addEventListener() {}
+        },
+        localStorage: {
+            getItem(key) {
+                if (key === "access") return "mock-jwt-token";
+                if (key === "user") {
+                    return JSON.stringify({ id: 10 });
+                }
+                return null;
+            }
+        },
+        sessionStorage: {
+            getItem(key) {
+                return values.get(key) ?? null;
+            },
+            setItem(key, value) {
+                const attempt = JSON.parse(value);
+
+                if (attempt.state === "pending") {
+                    pendingWriteAttempts++;
+                    return;
+                }
+
+                values.set(key, String(value));
+            },
+            removeItem(key) {
+                values.delete(key);
+            }
+        },
+        crypto: {
+            randomUUID() {
+                return "123e4567-e89b-42d3-a456-426614174000";
+            }
+        },
+        async fetch(url, options) {
+            requests.push({ url, options });
+            throw new Error("No order request should be sent");
+        },
+        console
+    };
+
+    vm.createContext(context);
+    vm.runInContext(checkoutScript, context);
+    vm.runInContext("buyNowProductReady = true", context);
+
+    await assert.rejects(
+        vm.runInContext("createBuyNowOrder()", context),
+        {
+            message: "Unable to verify the pending Buy Now checkout attempt."
+        }
+    );
+
+    assert.equal(pendingWriteAttempts, 1);
+    assert.equal(requests.length, 0);
+    assert.equal(
+        vm.runInContext("buyNowOrderId", context),
+        null
+    );
+
+    const storedAttempt = JSON.parse(
+        values.get("buyNowIdempotencyAttempt")
+    );
+
+    assert.equal(storedAttempt.userId, 10);
+    assert.equal(storedAttempt.productId, 5);
+    assert.equal(storedAttempt.state, undefined);
+});
+
 test("Buy Now network failure blocks another order-creation attempt", async () => {
     const requests = [];
 

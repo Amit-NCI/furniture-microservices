@@ -273,6 +273,35 @@ It must only be called after successful checkout has been confirmed.
 Buy Now submission remains disabled. The idempotency database migration
 has not been applied to the live PostgreSQL database.
 
+### Buy Now checkout state integrity and failure recovery
+
+I added more frontend tests to check how Buy Now handles damaged or
+unavailable browser storage.
+
+The checkout now has additional checks for these situations:
+
+- Corrupted checkout data is rejected without creating an order.
+- If saving the pending state fails, no order request is sent.
+- If saving the confirmed state fails, another order request is blocked.
+- Unexpected checkout states are rejected without changing stored data.
+- After saving the pending state, the frontend reads it back and checks
+  the user ID, product ID, idempotency key, and pending state before
+  sending the order request.
+
+These checks help prevent duplicate orders when storage fails or the
+checkout page is refreshed.
+
+The frontend checkout test suite now has 34 passing tests. The previously
+verified backend regression suite had 56 passing tests. Together, these
+represent 90 passing tests across the two suites, although the backend
+suite was not rerun as part of this frontend change.
+
+Buy Now order submission remains disabled. The checkout completion
+helper is not connected to the submission handler, and the backend
+idempotency migration has not been applied to the live database.
+
+No live orders or customer database records were used for these tests.
+
 ### Buy Now checkout state persistence and page-refresh recovery
 
 The Buy Now order-creation helper now saves the checkout attempt state in
