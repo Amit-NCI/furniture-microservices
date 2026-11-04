@@ -443,3 +443,43 @@ Buy Now submission remains disabled. The checkout completion helper is not
 connected to the submission handler. The backend idempotency migration has
 only been tested in disposable PostgreSQL and has not been applied to the
 live database. No live orders were created during these frontend tests.
+
+### Admin product management API
+
+The Product service now includes dedicated admin-only endpoints for
+managing the furniture product catalogue.
+
+These endpoints use JWT authentication and require the exact `admin`
+role. Customer and staff roles cannot access them.
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/products/admin/` | List products |
+| POST | `/api/products/admin/` | Create a product |
+| PUT | `/api/products/admin/<id>/` | Update a product |
+| DELETE | `/api/products/admin/<id>/` | Delete a product |
+
+Product creation and updates validate input and reject negative prices
+and stock quantities. Client-supplied IDs and server-managed timestamps
+are rejected. Updating or deleting a nonexistent product returns HTTP 404.
+
+The existing customer and staff product endpoints remain separate.
+
+#### Admin product API testing
+
+The Product service has 58 passing automated tests, including 24
+admin product API tests. The full test suite achieved 87.01% coverage,
+exceeding the configured 60% minimum.
+
+Tests cover product listing, creation, editing, deletion, JWT role
+restrictions, validation, and missing-product handling.
+
+The tests use an isolated test database and do not modify live
+PostgreSQL data.
+
+This milestone implements the backend product management APIs.
+The frontend admin dashboard, order management, customer management,
+and analytics remain future development work.
+
+Buy Now submission remains disabled. The order idempotency migration
+has not been applied to the live database.

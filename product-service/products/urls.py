@@ -5,10 +5,18 @@ from .views import (
     ProductDetail,
     ProductUpdate,
     ProductDelete,
+    AdminProductList,
+    AdminProductUpdate,
 )
 
 urlpatterns = [
     # Public APIs
+    path("admin/", AdminProductList.as_view(), name="admin-product-list"),
+    path(
+        "admin/<int:pk>/",
+        AdminProductUpdate.as_view(),
+        name="admin-product-update",
+    ),
     path("", ProductList.as_view()),
     path("<int:pk>/", ProductDetail.as_view()),
 
