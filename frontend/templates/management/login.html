@@ -1,0 +1,39 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<section class="management-login">
+    <h1>Administrator Login</h1>
+
+    <p>Sign in to access FurnitureShop management.</p>
+
+    <form method="post" action="{% url 'management-authenticate' %}">
+        {% csrf_token %}
+
+        <div>
+            <label for="admin-username">Username</label>
+            <input
+                type="text"
+                id="admin-username"
+                name="username"
+                autocomplete="username"
+                required
+            >
+        </div>
+
+        <div>
+            <label for="admin-password">Password</label>
+            <input
+                type="password"
+                id="admin-password"
+                name="password"
+                autocomplete="current-password"
+                required
+            >
+        </div>
+
+        <button type="submit">Sign In</button>
+    </form>
+
+    <p>Administrator access requires verified credentials.</p>
+</section>
+{% endblock %}

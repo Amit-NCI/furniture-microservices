@@ -1,0 +1,46 @@
+# Environment files and credentials
+.env
+.env.*
+**/.env
+**/.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python virtual environments
+.venv/
+venv/
+env/
+**/.venv/
+**/venv/
+
+# Python caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Backup files
+*.bak
+*.bak-*
+*.py.bak-*
+**/*.bak
+**/*.bak-*
+
+# Version control
+.git/
+.gitignore
+
+# Development and editor files
+.DS_Store
+.vscode/
+.idea/
+.coverage
+htmlcov/
+*.log
+
+# Docker development files
+docker-compose*.yml

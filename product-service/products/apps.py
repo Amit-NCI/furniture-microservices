@@ -19,7 +19,10 @@ class ProductsConfig(AppConfig):
         """
         import os
         # Only start in the main process, not in Django's autoreloader child
-        if os.environ.get('RUN_MAIN') != 'true':
+        if (
+            os.environ.get('ENABLE_RABBITMQ_CONSUMER', '').lower() == 'true'
+            and os.environ.get('RUN_MAIN') != 'true'
+        ):
             threading.Thread(
                 target=self._start_consumer,
                 daemon=True,

@@ -19,7 +19,11 @@ from django.urls import path, include
 from ui import views
 from ui.views import checkout_view 
 
+from ui.health import liveness, readiness
+
 urlpatterns = [
+    path("health/live/", liveness, name="frontend-health-live"),
+    path("health/ready/", readiness, name="frontend-health-ready"),
     path('admin/', admin.site.urls),
 
     # Connect UI app

@@ -100,26 +100,32 @@ function updateSelection() {
 
 
 // 🔥 IMPORTANT: Make quantity update work
-async function checkout() {
-    let user = JSON.parse(localStorage.getItem("user"));
+function checkout() {
+    const token = localStorage.getItem("access");
 
-    if (!user) {
-        alert("Please login first");
+    if (!token) {
+        alert("Please log in before proceeding to checkout.");
         return;
     }
 
-    const response = await fetch(`/api/checkout/${user.id}/`, {
-        method: "POST"
-    });
+    const selectedItems = Array.from(
+        document.querySelectorAll(".select-item:checked")
+    ).map(cb => Number(cb.dataset.id));
 
-    const data = await response.json();
-
-    if (data.error) {
-        alert(data.error);
-    } else {
-        alert("Order placed successfully 🎉");
-        window.location.href = "/orders/";
+    if (
+        selectedItems.length === 0 ||
+        selectedItems.some(id => !Number.isSafeInteger(id) || id <= 0)
+    ) {
+        alert("Please select valid cart items before checkout.");
+        return;
     }
+
+    sessionStorage.setItem(
+        "checkoutSelectedItems",
+        JSON.stringify(selectedItems)
+    );
+
+    window.location.href = "/checkout/";
 }
 
 // IMPORTANT: Make remove work

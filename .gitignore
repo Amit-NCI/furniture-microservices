@@ -24,3 +24,33 @@ staticfiles/
 
 # VS Code
 .vscode/
+
+# Local frontend database backups
+/frontend/backups/
+/.rabbitmq-app-credentials
+**/.env.bak-*
+*.py.bak-rabbitmq-auth
+/docker-compose.yml.bak-*
+/product-service/products/apps.py.bak-consumer-separation
+
+# RabbitMQ credential rotation
+/.rabbitmq-next-credentials
+
+# Local infrastructure state and development backups
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfvars.json
+**/terraform.tfstate.backup
+**/*.tfplan
+**/crash.log
+**/crash.*.log
+**/*.pem
+**/*.key
+**/.coverage
+**/.coverage.*
+**/*.bak
+**/*.bak-*
+**/*.backup
+**/*.backup-*

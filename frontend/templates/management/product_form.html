@@ -1,0 +1,57 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<section class="management-product-form">
+    <header>
+        <h1>{% if editing %}Edit Product{% else %}Add Product{% endif %}</h1>
+        <p>{% if editing %}Update the existing product details.{% else %}Create a new product in the FurnitureShop catalogue.{% endif %}</p>
+        <nav aria-label="Management navigation">
+            <a href="{% url 'management-products' %}">
+                Back to Products
+            </a>
+        </nav>
+    </header>
+
+    <hr>
+
+    <form method="post">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div role="alert">
+                {{ form.non_field_errors }}
+            </div>
+        {% endif %}
+
+        {% for field in form %}
+            <div style="margin-bottom: 1rem;">
+                <label for="{{ field.id_for_label }}">
+                    {{ field.label }}
+                </label>
+
+                <div>
+                    {{ field }}
+                </div>
+
+                {% if field.help_text %}
+                    <small>{{ field.help_text }}</small>
+                {% endif %}
+
+                {% if field.errors %}
+                    <div role="alert">
+                        {{ field.errors }}
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+
+        <button type="submit">
+            {% if editing %}Save Changes{% else %}Create Product{% endif %}
+        </button>
+
+        <a href="{% url 'management-products' %}">
+            Cancel
+        </a>
+    </form>
+</section>
+{% endblock %}

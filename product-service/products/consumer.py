@@ -13,8 +13,8 @@ def get_connection():
     from decouple import config
 
     credentials = pika.PlainCredentials(
-        username=config('RABBITMQ_USER', default='guest'),
-        password=config('RABBITMQ_PASSWORD', default='guest'),
+        username=config('RABBITMQ_USER'),
+        password=config('RABBITMQ_PASSWORD'),
     )
     parameters = pika.ConnectionParameters(
         host=config('RABBITMQ_HOST', default='rabbitmq'),

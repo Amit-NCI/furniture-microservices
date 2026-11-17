@@ -20,7 +20,11 @@ from django.contrib import admin
 from django.urls import path, include
 from products.views import ProductList, ProductDetail
 
+from products.health import liveness, readiness
+
 urlpatterns = [
+    path("health/live/", liveness, name="product-health-live"),
+    path("health/ready/", readiness, name="product-health-ready"),
     path('admin/', admin.site.urls),
     # API route
     path('api/products/', include('products.urls')),

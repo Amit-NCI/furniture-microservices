@@ -1,0 +1,44 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+<section class="management-dashboard">
+    <h1>FurnitureShop Management</h1>
+
+    <div class="management-header">
+        <p>
+            Signed in as:
+            <strong>{{ request.session.management_admin_username }}</strong>
+        </p>
+
+        <form method="post" action="{% url 'management-logout' %}">
+            {% csrf_token %}
+            <button type="submit">Logout</button>
+        </form>
+    </div>
+
+    <p>Administration dashboard</p>
+
+    <p>
+        This dashboard is under development.
+        Administrative features are not yet enabled.
+    </p>
+
+    <h2>Management Sections</h2>
+
+    <ul>
+        <li>
+            <a href="{% url 'management-products' %}">
+                Manage Products
+            </a>
+        </li>
+        <li>Orders - Coming soon</li>
+        <li>Customers - Coming soon</li>
+        <li>Analytics - Coming soon</li>
+    </ul>
+
+    <p>
+        Administrative data and actions will require
+        authenticated, authorized access.
+    </p>
+</section>
+{% endblock %}

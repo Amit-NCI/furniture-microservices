@@ -62,7 +62,7 @@ jobs:
           RABBITMQ_USER: guest
           RABBITMQ_PASSWORD: guest
         run: |
-          pylint --exit-zero --fail-under=6.0 $(find . -name "*.py" ! -path "*/migrations/*" ! -path "*/venv/*" ! -path "*/.venv/*" ! -name "manage.py" ! -path "*/tests/*")
+          pylint --fail-under=6.0 $(find . -name "*.py" ! -path "*/migrations/*" ! -path "*/venv/*" ! -path "*/.venv/*" ! -name "manage.py" ! -path "*/tests/*")
 
       - name: Run pytest with coverage
         working-directory: ${{ matrix.working_dir }}

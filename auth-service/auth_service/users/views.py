@@ -15,6 +15,11 @@ class RegisterView(APIView):
         username = data.get('username')
         password = data.get('password')
         role = data.get('role', 'customer')
+        if role not in ('customer', 'staff'):
+            return Response(
+                {"error": "Invalid registration role"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if not username or not password:
             return Response(
@@ -78,6 +83,7 @@ class LoginView(APIView):
             )
 
         refresh = RefreshToken.for_user(user)
+        refresh['role'] = user.role
 
         return Response({
             "id": user.id,

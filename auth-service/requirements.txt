@@ -10,3 +10,4 @@ pytest-django
 pytest-cov
 pylint
 pylint-django
+whitenoise>=6.9,<7

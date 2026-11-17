@@ -109,28 +109,23 @@ function addToCart(productId) {
 }
 
 // ================= BUY NOW =================
-async function buyNow(productId) {
+function buyNow(productId) {
+    const token = localStorage.getItem("access");
 
-    let user = JSON.parse(localStorage.getItem("user"));
-
-    if (!user) {
-        alert("Please login first");
+    if (!token) {
+        alert("Please log in before proceeding to checkout.");
         return;
     }
 
-    await fetch(`/api/orders/`, {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-            user_id: user.id,
-            product_id: productId,
-            quantity: 1,
-            status: "placed"
-        })
-    });
+    const id = Number(productId);
 
-    alert("Order placed ⚡");
-    window.location.href = "/orders/";
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        alert("Invalid product selected.");
+        return;
+    }
+
+    // Navigation only. No order is created at this stage.
+    window.location.href = `/checkout/?product_id=${encodeURIComponent(id)}`;
 }
 
 // ================= CHECKOUT =================

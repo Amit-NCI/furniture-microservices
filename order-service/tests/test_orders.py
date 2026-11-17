@@ -93,7 +93,7 @@ class TestCart:
 
     def test_add_to_cart(self, auth_client):
         with patch('orders.views.Order') as MockOrder:
-            MockOrder.objects.create.return_value = MagicMock()
+            MockOrder.objects.create.return_value = MagicMock(id=123)
             response = auth_client.post('/api/orders/', {
                 'product_id': 1,
                 'quantity': 3,
@@ -245,3 +245,156 @@ class TestOrderHistory:
 # URL patterns for @pytest.mark.urls
 # ============================================================
 urlpatterns = get_urls()
+
+# ============================================================
+# CREATE ORDER SECURITY VALIDATION TESTS
+# ============================================================
+
+@pytest.mark.django_db
+@pytest.mark.urls('tests.test_orders')
+class TestCreateOrderSecurity:
+
+    def test_valid_order_returns_order_id(self, auth_client):
+        response = auth_client.post(
+            '/api/orders/',
+            {'product_id': 1, 'quantity': 2},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert response.data['message'] == 'Item added to cart'
+        assert isinstance(response.data['order_id'], int)
+
+        order = Order.objects.get(id=response.data['order_id'])
+
+        assert order.user_id == 1
+        assert order.product_id == 1
+        assert order.quantity == 2
+        assert order.status == 'cart'
+
+    @pytest.mark.parametrize(
+        'payload',
+        [
+            {},
+            {'quantity': 2},
+            {'product_id': None},
+            {'product_id': 0},
+            {'product_id': -1},
+            {'product_id': 'abc'},
+            {'product_id': '1'},
+            {'product_id': True},
+        ],
+    )
+    def test_invalid_product_id_rejected(self, auth_client, payload):
+        before = Order.objects.count()
+
+        response = auth_client.post(
+            '/api/orders/',
+            payload,
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'error' in response.data
+        assert Order.objects.count() == before
+
+    @pytest.mark.parametrize(
+        'quantity',
+        [
+            0,
+            -1,
+            -5,
+            'abc',
+            '2',
+            None,
+            True,
+            1.5,
+        ],
+    )
+    def test_invalid_quantity_rejected(self, auth_client, quantity):
+        before = Order.objects.count()
+
+        response = auth_client.post(
+            '/api/orders/',
+            {
+                'product_id': 1,
+                'quantity': quantity,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'error' in response.data
+        assert Order.objects.count() == before
+
+    @pytest.mark.parametrize(
+        'requested_status',
+        [
+            'placed',
+            'shipped',
+            'delivered',
+        ],
+    )
+    def test_client_cannot_override_order_status(
+        self,
+        auth_client,
+        requested_status,
+    ):
+        response = auth_client.post(
+            '/api/orders/',
+            {
+                'product_id': 1,
+                'quantity': 1,
+                'status': requested_status,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+
+        order = Order.objects.get(id=response.data['order_id'])
+
+        assert order.status == 'cart'
+
+    def test_client_cannot_override_user_id(self, auth_client):
+        response = auth_client.post(
+            '/api/orders/',
+            {
+                'user_id': 2,
+                'product_id': 1,
+                'quantity': 1,
+            },
+            format='json',
+        )
+
+        assert response.status_code == 200
+
+        order = Order.objects.get(id=response.data['order_id'])
+
+        assert order.user_id == 1
+
+    def test_quantity_defaults_to_one(self, auth_client):
+        response = auth_client.post(
+            '/api/orders/',
+            {'product_id': 1},
+            format='json',
+        )
+
+        assert response.status_code == 200
+
+        order = Order.objects.get(id=response.data['order_id'])
+
+        assert order.quantity == 1
+
+    def test_unauthenticated_cannot_create_order(self, client):
+        response = client.post(
+            '/api/orders/',
+            {
+                'product_id': 1,
+                'quantity': 1,
+            },
+            format='json',
+        )
+
+        assert response.status_code in (401, 403)
+        assert Order.objects.count() == 0

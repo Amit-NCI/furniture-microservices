@@ -2,6 +2,8 @@ import pytest
 from django.urls import path
 from rest_framework.test import APIClient
 from users.models import User
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+
 
 
 def get_urls():
@@ -97,6 +99,23 @@ class TestRegister:
         }, format='json')
         assert response.status_code == 400
         assert 'required' in response.data['error']
+    def test_register_admin_role_rejected(self, client):
+        response = client.post(
+            '/api/auth/register/',
+            {
+                'username': 'unauthorized_admin',
+                'password': 'StrongTestPassword123!',
+                'role': 'admin',
+            },
+            format='json'
+        )
+
+        assert response.status_code == 400
+        assert response.data['error'] == 'Invalid registration role'
+
+        assert not User.objects.filter(
+            username='unauthorized_admin'
+        ).exists()
 
 
 # ============================================================
@@ -106,7 +125,27 @@ class TestRegister:
 @pytest.mark.django_db
 @pytest.mark.urls('tests.test_auth')
 class TestLogin:
+    def test_login_jwt_contains_staff_role(
+        self, client, staff_user_approved
+    ):
+        response = client.post(
+            '/api/auth/login/',
+            {
+                'username': 'teststaff',
+                'password': 'TestPass@123',
+            },
+            format='json'
+        )
 
+        assert response.status_code == 200
+
+        access_token = AccessToken(response.data['access'])
+        refresh_token = RefreshToken(response.data['refresh'])
+
+        assert access_token['role'] == 'staff'
+        assert refresh_token['role'] == 'staff'
+
+        assert access_token['user_id'] == str(staff_user_approved.id)
     def test_login_customer_success(self, client, customer_user):
         response = client.post('/api/auth/login/', {
             'username': 'testcustomer',
@@ -164,8 +203,6 @@ class TestLogin:
         }, format='json')
         assert response.status_code == 400
         assert 'required' in response.data['error']
-
-
 # ============================================================
 # URL patterns for @pytest.mark.urls
 # ============================================================

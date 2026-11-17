@@ -3,3 +3,4 @@ djangorestframework
 django-cors-headers
 gunicorn
 python-decouple
+cryptography>=44.0,<47.0

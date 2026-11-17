@@ -40,7 +40,7 @@ def pytest_configure(config):
             ROOT_URLCONF='tests.test_auth',
             USE_TZ=True,
             SIMPLE_JWT={
-                'SIGNING_KEY': 'test-jwt-signing-key',
+                'SIGNING_KEY': 'test-only-jwt-signing-key-for-auth-service-2026',
                 'ALGORITHM': 'HS256',
             },
         )

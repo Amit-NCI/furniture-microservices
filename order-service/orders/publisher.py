@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 def get_connection():
     """Create a RabbitMQ connection using credentials from .env"""
     credentials = pika.PlainCredentials(
-        username=config('RABBITMQ_USER', default='guest'),
-        password=config('RABBITMQ_PASSWORD', default='guest'),
+        username=config('RABBITMQ_USER'),
+        password=config('RABBITMQ_PASSWORD'),
     )
     parameters = pika.ConnectionParameters(
         host=config('RABBITMQ_HOST', default='rabbitmq'),

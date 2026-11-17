@@ -12,7 +12,11 @@ from orders.views import (
     ClearCart,
 )
 
+from orders.health import liveness, readiness
+
 urlpatterns = [
+    path("health/live/", liveness, name="order-health-live"),
+    path("health/ready/", readiness, name="order-health-ready"),
     path('admin/', admin.site.urls),
     path('api/orders/', CreateOrder.as_view()),
     path('api/orders/<int:user_id>/', GetUserOrders.as_view()),

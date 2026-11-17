@@ -1,0 +1,84 @@
+{% extends 'layout.html' %}
+
+{% block content %}
+
+<section class="management-products">
+    <header>
+        <h1>Product Management</h1>
+
+        <p>
+            View and manage the FurnitureShop product catalogue.
+        </p>
+
+        <nav aria-label="Management navigation">
+            <a href="{% url 'management-dashboard' %}">
+                Back to Dashboard
+            </a>
+        </nav>
+    </header>
+
+    <hr>
+
+    <p>
+        <a href="{% url 'management-product-create' %}">
+            Add New Product
+        </a>
+    </p>
+
+    {% if products %}
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">ID</th>
+                        <th scope="col">Product</th>
+                        <th scope="col">Description</th>
+                        <th scope="col">Price</th>
+                        <th scope="col">Stock</th>
+                        <th scope="col">Image</th>
+                            <th scope="col">Actions</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for product in products %}
+                        <tr>
+                            <td>{{ product.id }}</td>
+                            <td>{{ product.name }}</td>
+                            <td>{{ product.description|default:"—" }}</td>
+                            <td>€{{ product.price }}</td>
+                            <td>{{ product.stock_quantity }}</td>
+                            <td>
+                                {% if product.image_url %}
+                                    <a href="{{ product.image_url }}"
+                                       target="_blank"
+                                       rel="noopener noreferrer">
+                                        View image
+                                    </a>
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                                <td>
+                                    <a href="{% url 'management-product-edit' product.id %}">Edit</a>
+                            |
+                            <a href="{% url 'management-product-delete' product.id %}"
+                               style="color: #dc2626;">
+                                Delete
+                            </a>
+                                </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>No products are currently available.</p>
+    {% endif %}
+
+    <hr>
+
+    <p>Select Delete to review a product before confirming removal.</p>
+</section>
+
+{% endblock %}
