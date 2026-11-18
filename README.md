@@ -1,485 +1,261 @@
 # Furniture E-Commerce Platform
 
-A furniture shopping application built with Python, Django REST Framework, PostgreSQL, RabbitMQ, Docker, and Nginx. I started this project to learn how the different parts of an e-commerce system work together when they are built as separate services.
+**A containerized, event-driven microservices project developed as a practical Cloud, DevOps and Site Reliability Engineering portfolio.**
 
-The project is still in development. The main shopping flows are working, and I am now focusing on testing, reliability, and preparing the application for cloud deployment.
+[GitHub repository](https://github.com/Amit-NCI/furniture-microservices) · [Docker Hub images](https://hub.docker.com/u/amitky15)
 
-## How the application works
+> **Project status (November 2026):** The application runs locally using Docker Compose; automated backend and frontend Django tests have passed; GitHub Actions has successfully tested and published four application images to Docker Hub. AWS infrastructure has been provisioned using Terraform, and an EC2 deployment configuration is being prepared. **The current release has not yet been deployed and functionally verified on EC2.**
 
-The application has four services:
+## 1. Project overview
 
-- **Auth service:** Handles user registration, login, JWT tokens, and user roles.
-- **Product service:** Manages the furniture catalogue and staff-only product changes.
-- **Order service:** Handles shopping carts, checkout, and order history.
-- **Frontend service:** Serves the pages and JavaScript used by customers.
+This project explores how to design, test, package and operate an e-commerce application as independently deployed services rather than one monolithic application. It combines application engineering (authentication, product management, carts and orders) with infrastructure and operational concerns (separate databases, asynchronous messaging, CI, container image publishing, health checks and cloud deployment).
 
-Nginx provides one entry point for the application. The browser sends API requests through Nginx, which forwards each request to the correct service. The frontend serves the website; it does not act as another API proxy.
+### Architecture
 
 ```text
-Browser
-   |
-   v
-Nginx (port 80)
-   |
-   +-- /               --> Frontend (port 8004)
-   +-- /api/auth/      --> Auth (port 8001)
-   +-- /api/products/  --> Product (port 8002)
-   +-- /api/orders/    --> Order (port 8003)
-   +-- /api/cart/      --> Order (port 8003)
-   +-- /api/checkout/  --> Order (port 8003)
-
-Auth, Product and Order each have their own PostgreSQL database.
-Order publishes order events to RabbitMQ; Product consumes them.
+                         Customer / admin browser
+                                   |
+                              HTTP :80
+                                   |
+                                 Nginx
+                                   |
+          +------------------------+-----------------------+
+          |                        |                       |
+      Frontend                 API routing            Static assets
+    Django + JS                    |
+                     +-------------+-------------+
+                     |             |             |
+                  Auth API     Product API     Order API
+                     |             |             |
+                Auth PostgreSQL  Product DB   Order PostgreSQL
+                                   ^             |
+                                   |             | order.placed
+                           Product consumer <--- RabbitMQ
+                           (separate process)
 ```
 
-The Auth service issues JWTs. The Product and Order services check the tokens locally, without making a database request to Auth for every API call.
+Nginx routes `/` to the frontend, `/api/auth/` to authentication, `/api/products/` to products, and order/cart/checkout APIs to the Order service. The Auth, Product and Order services each own a PostgreSQL database. JWTs issued by Auth are checked by other services. The Order service publishes `order.placed` events; the Product consumer processes them to update inventory.
 
-## What is implemented
+The frontend is a Django-rendered website with JavaScript interactions; it is not an additional API gateway.
 
-### Shopping features
+### Components
 
-- User registration and login.
-- JWT-based authentication and role-based access.
-- Product browsing and staff-only product management.
-- Add to cart, update quantities, remove items, and clear the cart.
-- Checkout for selected cart items and order history.
-- A Buy Now preview page that shows the selected product before checkout.
+| Component | Responsibility | Implementation |
+| --- | --- | --- |
+| Auth service | Registration, login, JWT issuance, user roles and approval checks | Django REST Framework, PostgreSQL |
+| Product service | Catalogue, product APIs, restricted product administration | Django REST Framework, PostgreSQL |
+| Order service | Cart, order creation, checkout, order history and idempotency safeguards | Django REST Framework, PostgreSQL |
+| Frontend | Shopping pages, cart, checkout preparation and management interface | Django templates, JavaScript, CSS |
+| RabbitMQ | Asynchronous `order.placed` messages | RabbitMQ |
+| Product consumer | Processes order events independently of HTTP workers | Django management command |
+| Nginx | Single HTTP entry point, reverse proxy and static assets | Nginx |
 
-**Buy Now is not enabled for placing orders yet.** The frontend intentionally blocks the final Buy Now submission while its backend reliability checks are being completed.
+The normal Compose deployment has **nine active services** (three databases, RabbitMQ, four application services and Nginx). A **tenth service**, `product-consumer`, is defined under the optional `consumer-migration` profile. It uses the Product image and runs `python manage.py consume_orders`; it is a separate process, **not a new business microservice**. Consumer activation and migration must be coordinated to avoid running two inventory consumers unintentionally.
 
-### Django migration verification
+## 2. Implemented application features
 
-I also tested the Order service's Django migrations against a disposable PostgreSQL 16.14 database. Django connected successfully using the isolated `django_idempotency_test` schema, and all migrations completed, including `orders.0004_orderidempotencykey`.
+### Customer experience
 
-This test did not change the live database. The new idempotency migration has not been deployed. Django API concurrency tests have since passed against the same disposable PostgreSQL environment.
+- User registration, login and JWT-based authentication.
+- Product browsing and product detail endpoints.
+- Shopping cart: add items, update quantities, remove selected items, clear cart and review totals.
+- Selected-item checkout and order history.
+- Buy Now preview and substantial client-side retry/idempotency preparation.
 
-### PostgreSQL and order safety
+**Important Buy Now limitation:** The README's documented development history states that final Buy Now order submission remains intentionally disabled pending deployment and safety verification. Its idempotency helpers and tests should not be interpreted as a live, end-to-end purchase flow.
 
-Each backend service uses its own PostgreSQL database. The Order service stores order details, including product information and the price at the time of purchase.
+### Administration
 
-I have also added an idempotency-key mechanism to the Order service. An optional `Idempotency-Key` request header lets the backend recognise a repeated order-creation request from the same user. A repeated key with the same product and quantity should return the original order ID. Reusing that key with a different product or quantity is rejected.
+- Product service admin APIs for listing, creating, editing and deleting products.
+- JWT role enforcement for the dedicated admin product endpoints; customer and staff roles are not accepted by those admin endpoints.
+- Input validation for prices, quantities, protected fields and nonexistent products.
+- Frontend management dashboard, login and product-management pages have been added to the repository, with dedicated Django tests. Their behavior has been verified in tests, **not yet through a public EC2 deployment**.
 
-The implementation uses a database unique constraint and an atomic transaction to avoid saving an extra order when two requests compete for the same key.
+### Event-driven inventory
 
-The idempotency logic has passed the current backend and disposable PostgreSQL integration tests. Migration `0004_orderidempotencykey.py` has **not** been applied to the live PostgreSQL database. Buy Now submission remains disabled until the deployment and remaining safety checks are completed.
+The Order service publishes `order.placed` messages to RabbitMQ, and the Product service includes a stock-update consumer. The consumer has also been extracted into a dedicated Django management command to allow it to run separately from Gunicorn HTTP workers. Event-processing reliability, redelivery and duplicate-event behavior should be verified before describing the system as fully production-ready.
 
-### Messaging with RabbitMQ
+## 3. Order idempotency and failure handling
 
-The Order service publishes an `order.placed` event when an order is placed. The Product service consumes order events to update stock. This allows the services to communicate without the Order service directly changing the Product database.
+Order creation supports an optional `Idempotency-Key` header. The backend associates the key with a user and request details, uses an atomic database transaction and a unique constraint, and is designed to:
 
-### Security and deployment improvements
+- Return the same order for an identical retry.
+- Reject reuse of a key with different product/quantity details (HTTP 409).
+- Prevent competing requests from committing duplicate idempotency records.
+- Avoid leaving an extra committed order after a failed transaction.
 
-- Application secrets are kept in local `.env` files, with `.env.example` files provided for setup.
-- JWT signing uses a dedicated key, separate from each service's Django secret key.
-- Debug mode and allowed hosts/origins are controlled through configuration.
-- Gunicorn runs the Django applications in Docker instead of Django's development server.
-- Application containers run as a non-root user.
-- Nginx is the external entry point; backend service ports are not published directly to the host.
-- Multi-stage Docker builds are used for the application images.
+**Database deployment caveat:** Migration `orders.0004_orderidempotencykey` was exercised against a disposable PostgreSQL environment. The recorded development history explicitly says it **has not been applied to the live database**. This must be reconciled and verified before enabling the Buy Now submission flow or upgrading an existing deployment.
 
-These measures improve the setup, but the project should not be treated as a fully audited production deployment.
+The frontend Buy Now helpers use `crypto.randomUUID()` and `sessionStorage` to associate a checkout attempt with its user and product. They track prepared, pending and confirmed states, preserve unresolved attempts across refreshes, reject malformed state, and block duplicate requests after uncertain outcomes. Regression tests cover HTTP 400/401/403/409 responses, browser storage failures, state persistence and confirmed-order recovery. These are defensive mechanisms, not a guarantee of exactly-once execution.
 
-## Testing
+## 4. Automated testing and verification
 
-Testing is an important part of this project because order and checkout bugs can affect customer data.
+### Latest verified service test runs
 
-The latest verified results are:
+The following results were captured from local Docker Compose test executions after the latest application changes:
 
-| Check | Result |
+| Service | Command | Passing tests | Coverage reported |
+| --- | --- | ---: | ---: |
+| Frontend | `docker compose run --rm --no-deps frontend python manage.py test ui` | **44** | Not reported by this command |
+| Auth | `docker compose run --rm --no-deps auth-service python -m pytest tests/ -q` | **14** | **77.38%** (70% minimum) |
+| Order | `docker compose run --rm --no-deps order-service python -m pytest tests/ -q` | **56** | **79.57%** (60% minimum) |
+| Product | `docker compose run --rm --no-deps product-service python -m pytest tests/ -q` | **58** | **80.90%** (60% minimum) |
+| **Total** | **Four verified runs** | **172 passed** | **Not a combined coverage figure** |
+
+The historical README also records separate frontend JavaScript regression suites and disposable-PostgreSQL transaction/concurrency tests. Their counts varied as the test suite evolved; they are **not added to the 172-test total**, because they were not all rerun together in the latest verification.
+
+### Reliability scenarios covered during development
+
+- Duplicate idempotency keys, retries with changed request details and concurrent order-creation requests.
+- PostgreSQL unique-constraint and rollback behavior in an isolated test database.
+- JWT authentication and permission enforcement.
+- Product administration validation and role restrictions.
+- Checkout attempt recovery, failed browser-storage writes and HTTP error handling.
+- Django frontend management routes and product forms.
+
+**Scope:** Passing automated tests do not establish that the application has passed full browser-based end-to-end testing on AWS. Tests involving a disposable database do not prove that migrations are safe to apply to an existing database without a backup and migration plan.
+
+## 5. CI and Docker image delivery
+
+GitHub Actions workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+On pushes and pull requests to `main`, a matrix job installs dependencies and runs Pylint and pytest for **Auth, Order and Product**. On a successful push to `main`, a downstream matrix builds and pushes four images to Docker Hub using Docker Buildx and GitHub Actions secrets. The latest observed workflow run for commit `f26067a` showed all three lint/test jobs and all four image publishing jobs successful.
+
+| Image | Docker Hub repository |
 | --- | --- |
-| Order-service backend tests | 56 passed |
-| Frontend JavaScript tests | 19 passed |
-| PostgreSQL duplicate-key rollback scenario | Passed |
-| PostgreSQL simultaneous-transaction scenario | Passed |
-| Django endpoint concurrency against PostgreSQL | Passed in disposable database |
-| Django endpoint retry and conflict checks | Passed in disposable database |
-| Django endpoint concurrent conflicting requests | Passed in disposable database |
+| Auth | [`amitky15/furniture-auth-service`](https://hub.docker.com/r/amitky15/furniture-auth-service) |
+| Order | [`amitky15/furniture-order-service`](https://hub.docker.com/r/amitky15/furniture-order-service) |
+| Product | [`amitky15/furniture-product-service`](https://hub.docker.com/r/amitky15/furniture-product-service) |
+| Frontend | [`amitky15/furniture-frontend`](https://hub.docker.com/r/amitky15/furniture-frontend) |
 
-The PostgreSQL checks ran in a separate disposable database, not against customer data. They confirmed that the unique constraint prevents two competing transactions from committing duplicate idempotency records, and that a failed transaction does not leave behind an extra committed order.
+Images are tagged with `latest` and the source commit SHA. The verified images use `linux/amd64`, compatible with the x86_64 EC2 instance. The Product consumer reuses the Product image with a different command; no fifth application image is required.
 
-I also tested the actual Django order-creation endpoint against the disposable PostgreSQL database. Two simultaneous requests with the same user, product, quantity, and idempotency key both returned HTTP 200 and the same order ID. PostgreSQL committed one order and one idempotency record.
+**Pipeline boundaries:** The workflow currently publishes images but does **not** deploy them to EC2 automatically. Frontend Django tests were run locally; they are not currently part of the three-service GitHub Actions test matrix. The pipeline should therefore be described as **CI plus automated image publishing**, rather than complete continuous deployment.
 
-Retrying the same request returned the original order ID. Reusing the key with a different product or quantity returned HTTP 409 without creating another order. In a separate concurrent test, two requests used the same key but different quantities. One returned HTTP 200, the other returned HTTP 409, and only the successful request's order was committed.
+## 6. Scenario-wise engineering roadmap
 
-After these checks, I reran the Order service regression suite: all 56 backend tests passed. The previously verified frontend suite also passed all 19 tests, giving 75 passing automated tests in total. These tests do not mean the idempotency feature has been deployed to the live database.
+This project is organized as a sequence of independently verifiable engineering scenarios. A scenario is marked complete only when the relevant implementation and checks have been performed.
 
-## Technology used
+| Scenario | Engineering focus | Current status | Evidence / next milestone |
+| --- | --- | --- | --- |
+| **1 — Local microservices** | Docker Compose, service isolation, PostgreSQL, RabbitMQ, Nginx, customer workflows | **Implemented and locally tested** | Compose configuration, application code and local tests |
+| **2 — Quality and delivery** | Unit/regression tests, JWT and idempotency checks, GitHub Actions, Docker Hub | **Implemented; ongoing improvement** | 172 latest verified tests; successful CI and four image pushes |
+| **3 — AWS infrastructure and EC2 deployment** | Terraform-managed EC2/networking, production Compose override, image pull, runtime configuration | **In progress** | Existing `t3.medium` EC2 provisioned and stopped; deployment not yet verified |
+| **4 — AWS functional and security validation** | Browser flows, health checks, migrations, backups, security groups, logs and recovery | **Planned** | Verify the running stack and document test evidence |
+| **5 — Kubernetes and Helm** | Deployments, Services, Ingress, ConfigMaps, Secrets, probes and scaling | **Planned** | Local Kubernetes first, then cloud orchestration as appropriate |
+| **6 — Observability and SRE** | Metrics, dashboards, alerts, SLI/SLO, incident response and failure testing | **Planned** | Prometheus/Grafana and reliability exercises |
+| **7 — Azure platform engineering** | Azure networking, compute, identity, monitoring and later AKS | **Planned** | Reuse the application to compare cloud deployment patterns |
 
-| Area | Tools |
+### Scenario 3: AWS deployment details
+
+The existing infrastructure was managed with Terraform in `eu-west-1`. The instance was resized in place from `t3.micro` to `t3.medium` (2 vCPU, 4 GiB RAM), with a 30 GiB gp3 root volume. The last verified instance state was **stopped**. Security group checks showed public HTTP (`80`), HTTPS (`443`) and SSH (`22`) restricted to a single IPv4 `/32`; there was no public RabbitMQ management (`15672`) ingress. Opening `443` does not itself mean TLS has been configured.
+
+The production Compose override (`docker-compose.prod.yml`) selects the four published images by commit SHA, disables local application builds and configures the separate Product consumer image. It requires `EC2_PUBLIC_HOST` at deployment time and sets `DEBUG=False` for application services. At the time of this README update, this override had been created and validated locally but was awaiting inclusion in Git.
+
+The Nginx configuration bind-mounts `nginx/nginx.conf` and the frontend static directory. These files must exist on the deployment host, which is why the deployment requires more than simply pulling container images. The EC2 bootstrap script installs Docker and Compose, but does not automatically clone the application or start the stack.
+
+**Before starting EC2:** arrange deployment files, ignored environment files and secret delivery; confirm the current public hostname and `ALLOWED_HOSTS`; plan database migrations and persistent volumes; and verify the consumer activation strategy. Running EC2 and retaining EBS storage may incur AWS charges.
+
+## 7. Technology stack
+
+| Area | Technologies |
 | --- | --- |
-| Backend | Python 3.12, Django 6, Django REST Framework |
+| Backend | Python 3.12, Django, Django REST Framework |
 | Frontend | Django templates, HTML, CSS, JavaScript |
-| Authentication | JWT / SimpleJWT |
-| Database | PostgreSQL 16 |
-| Messaging | RabbitMQ |
-| Web server and routing | Gunicorn, Nginx |
-| Containers | Docker, Docker Compose |
-| Testing | pytest, frontend JavaScript tests, PostgreSQL transaction tests |
-| Automation | GitHub Actions |
-| Planned cloud infrastructure | AWS, Terraform |
-| Planned monitoring | Prometheus, Grafana |
+| Authentication | JWT / SimpleJWT, role-based authorization |
+| Data | PostgreSQL 16, SQLite-backed frontend state where configured |
+| Messaging | RabbitMQ, Django management-command consumer |
+| Runtime | Gunicorn, Nginx, Docker, Docker Compose |
+| Quality | Django TestCase, pytest, coverage, Pylint, PostgreSQL integration testing |
+| Delivery | Git, GitHub Actions, Docker Buildx, Docker Hub |
+| Infrastructure | AWS EC2, VPC/security groups, Terraform |
+| Planned | Kubernetes, Helm, Prometheus, Grafana, Azure |
 
-## Running the project locally
+## 8. Run locally
 
-You will need Docker Desktop and Git. Python is useful for generating local secret values.
+**Prerequisites:** Docker with Compose and Git. Use local test data only.
 
-1. Clone the repository:
+```bash
+git clone https://github.com/Amit-NCI/furniture-microservices.git
+cd furniture-microservices
+```
 
-   ```bash
-   git clone https://github.com/Amit-NCI/furniture-microservices.git
-   cd furniture-microservices
-   ```
+Create the required service `.env` files from the relevant `.env.example` templates. Set independent Django `SECRET_KEY` values, a consistent dedicated `JWT_SIGNING_KEY` for JWT issuers/verifiers, appropriate PostgreSQL and RabbitMQ credentials, and valid allowed hosts/origins. Never commit actual `.env` files or private keys. To generate a random secret locally:
 
-2. Create the `.env` files required by each service using the matching `.env.example` files. Use different Django `SECRET_KEY` values for each service and the same dedicated `JWT_SIGNING_KEY` wherever JWTs are issued or verified. Configure the database and RabbitMQ settings as shown in the examples.
+```bash
+python3 -c 'import secrets; print(secrets.token_urlsafe(50))'
+```
 
-   You can generate random secret values with:
+Start the development stack:
 
-   ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(50))"
-   ```
+```bash
+docker compose up --build -d
+docker compose ps
+```
 
-3. Build and start the services:
+Open **http://localhost**. For troubleshooting:
 
-   ```bash
-   docker compose up --build -d
-   ```
+```bash
+docker compose logs --tail=100 order-service
+```
 
-4. Open `http://localhost` in your browser.
-
-5. Check container status and logs if a service does not start:
-
-   ```bash
-   docker compose ps
-   docker compose logs --tail=100 order-service
-   ```
-
-To stop the application without deleting database volumes:
+Stop containers without deleting persistent data:
 
 ```bash
 docker compose down
 ```
 
-**Data safety:** Do not use `docker compose down -v` if you want to keep existing database data. Avoid testing order-creation and checkout endpoints against a database containing real customer records.
+**Data warning:** `docker compose down -v` deletes Compose-managed named volumes. Do not run destructive commands against data you need to retain. The `product-consumer` service is profile-gated and should not be enabled alongside another active consumer until the migration plan is verified.
 
-## Main API routes
+### Run the verified test suites
+
+```bash
+docker compose run --rm --no-deps frontend python manage.py test ui
+docker compose run --rm --no-deps auth-service python -m pytest tests/ -q
+docker compose run --rm --no-deps order-service python -m pytest tests/ -q
+docker compose run --rm --no-deps product-service python -m pytest tests/ -q
+```
+
+These are the commands used for the recorded results; some tests depend on the project's local configuration and test fixtures.
+
+## 9. API reference
+
+Routes are accessed through Nginx. Authorization and request body requirements vary by endpoint.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| POST | `/api/auth/register/` | Register a user |
-| POST | `/api/auth/login/` | Log in and receive JWT tokens |
+| POST | `/api/auth/register/` | Register |
+| POST | `/api/auth/login/` | Obtain JWT |
 | GET | `/api/products/` | List products |
-| GET | `/api/products/<id>/` | View a product |
-| POST | `/api/products/` | Add a product (staff) |
-| PUT | `/api/products/update/<id>/` | Update a product (staff) |
-| DELETE | `/api/products/delete/<id>/` | Delete a product (staff) |
-| POST | `/api/orders/` | Create a cart order; optional idempotency key is under test |
-| GET | `/api/cart/` | View the cart |
+| GET | `/api/products/<id>/` | Product details |
+| POST | `/api/products/` | Create product (restricted) |
+| PUT | `/api/products/update/<id>/` | Update product (restricted) |
+| DELETE | `/api/products/delete/<id>/` | Delete product (restricted) |
+| GET / POST | `/api/products/admin/` | Admin product listing / creation |
+| PUT / DELETE | `/api/products/admin/<id>/` | Admin product update / deletion |
+| POST | `/api/orders/` | Create order; optional idempotency key |
+| GET | `/api/cart/` | View cart |
 | POST | `/api/cart/update/<id>/` | Change quantity |
-| DELETE | `/api/cart/<id>/` | Remove an item |
+| DELETE | `/api/cart/<id>/` | Remove item |
 | POST | `/api/cart/remove-selected/<user_id>/` | Remove selected items |
-| DELETE | `/api/cart/clear/<user_id>/` | Clear the cart |
-| POST | `/api/checkout/<user_id>/` | Check out selected cart items |
-| GET | `/api/orders/history/<user_id>/` | View order history |
+| DELETE | `/api/cart/clear/<user_id>/` | Clear cart |
+| POST | `/api/checkout/<user_id>/` | Checkout selected cart items |
+| GET | `/api/orders/history/<user_id>/` | Order history |
 
-The order and cart APIs require authentication. Some product operations are restricted to staff users.
+For the most current route definitions, consult the Django `urls.py` files in each service and `nginx/nginx.conf`.
 
-## Development roadmap
+## 10. Security, limitations and next validation
 
-| Work | Status |
-| --- | --- |
-| Docker-based services and Nginx routing | Completed |
-| Secrets, JWT checks, non-root containers, and Gunicorn | Completed |
-| Separate PostgreSQL databases | Completed |
-| RabbitMQ order events and stock updates | Completed |
-| Automated backend and frontend tests | In place; continuing to expand |
-| GitHub Actions CI/CD | Implemented; ongoing improvements |
-| Idempotency model, migration, and backend logic | Implemented locally; not deployed |
-| PostgreSQL transaction and concurrency checks | Completed in disposable database |
-| Django/PostgreSQL integration and concurrent API tests | Completed in disposable database; not deployed |
-| Enable Buy Now order submission | Planned after testing |
-| AWS deployment using Terraform | Planned |
-| Prometheus and Grafana monitoring | Planned |
+Security measures implemented or configured include ignored local secret files, separate JWT signing configuration, `DEBUG` and allowed-host settings, non-root application containers, multi-stage Dockerfiles, JWT role checks and reduced external port exposure. The GitHub Actions workflow uses repository secrets to authenticate to Docker Hub.
 
-## What I learned
+This is a learning and portfolio system, **not a security-audited production commerce service**. Known validation gaps include live migration rollout, complete browser-based EC2 functional testing, HTTPS/TLS configuration, reliable secret delivery, backups/restore testing, consumer redelivery behavior, full monitoring/alerting and automated rollback. Do not use real payment details or customer data for demonstrations.
 
-Building this project has helped me understand how authentication, product data, orders, databases, and messaging fit together in a microservices application. It has also shown me why deployment and testing matter as much as writing an API.
+## 11. Engineering lessons
 
-A recent focus has been making order creation safer when users retry requests or when two requests arrive at nearly the same time. I used PostgreSQL transactions and unique constraints to test these situations in an isolated environment before making changes to the running application.
+The main technical lessons have been that service boundaries create operational responsibilities: databases must be isolated, messages require careful consumer behavior, retries need durable idempotency safeguards, and successful unit tests do not replace database concurrency or end-to-end deployment testing. Building the GitHub Actions and Docker Hub pipeline also separates **producing a deployable artifact** from **proving that artifact works on cloud infrastructure**.
 
 ## Author
 
 **Amit Kumar Yadav**
 MSc Cloud Computing, National College of Ireland, Dublin
-
-GitHub: [Amit-NCI](https://github.com/Amit-NCI)
-LinkedIn: [Amit Kumar Yadav](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)
-
-
-### Frontend Buy Now idempotency preparation
-
-The Buy Now checkout page now has a helper for preparing an idempotency key.
-
-The helper uses a secure random UUID and stores it in browser session storage.
-It reuses the same key when the same user refreshes the checkout page for
-the same product. It refuses to reuse a stored attempt for another user or
-product. If secure storage or UUID generation is unavailable, it fails
-instead of creating an unprotected checkout key.
-
-Three new frontend tests cover page refreshes, different users or products,
-and missing secure browser features.
-
-All 24 frontend tests passed. The backend test suite previously passed
-56 tests, giving 80 passing automated tests across both suites.
-
-This is preparation only. The helper is not yet connected to the order
-creation request, and Buy Now submission remains disabled.
-
-The idempotency database migration has only been tested against disposable
-PostgreSQL. It has not been applied to the live database.
-
-### Buy Now idempotency header testing
-
-The Buy Now order-creation helper now includes an `Idempotency-Key` header in its order API request. The key is generated with `crypto.randomUUID()` and stored in `sessionStorage` for the current user, product, and checkout attempt.
-
-The frontend tests verify that the request includes the stored key, the same checkout attempt reuses its key, and repeated calls do not create duplicate requests. They also verify that an invalid user session or unavailable secure storage prevents the order API request.
-
-All 25 frontend tests pass. The backend suite previously passed 56 tests, giving 81 passing tests across both suites.
-
-Buy Now submission is still disabled in the checkout handler. The idempotency database migration has been tested only in disposable PostgreSQL and has not been applied to the live database.
-
-
-### Buy Now checkout attempt completion
-
-The Buy Now checkout page now includes a helper for clearing a completed
-checkout attempt from session storage.
-
-The helper checks the user ID, product ID, and stored idempotency key before
-removing the attempt. It refuses to clear an attempt belonging to another
-user or product.
-
-This allows a future purchase to receive a new idempotency key after the
-previous checkout has been confirmed as completed.
-
-A new frontend regression test checks that another user or product cannot
-clear the stored attempt, that a matching attempt can be cleared, and that
-a later purchase receives a different key.
-
-All 25 frontend tests passed. The Order service backend suite previously
-passed 56 tests, giving 81 passing automated tests across both suites.
-
-The completion helper is not connected to checkout submission yet.
-It must only be called after successful checkout has been confirmed.
-
-Buy Now submission remains disabled. The idempotency database migration
-has not been applied to the live PostgreSQL database.
-
-### Buy Now checkout state integrity and failure recovery
-
-I added more frontend tests to check how Buy Now handles damaged or
-unavailable browser storage.
-
-The checkout now has additional checks for these situations:
-
-- Corrupted checkout data is rejected without creating an order.
-- If saving the pending state fails, no order request is sent.
-- If saving the confirmed state fails, another order request is blocked.
-- Unexpected checkout states are rejected without changing stored data.
-- After saving the pending state, the frontend reads it back and checks
-  the user ID, product ID, idempotency key, and pending state before
-  sending the order request.
-
-These checks help prevent duplicate orders when storage fails or the
-checkout page is refreshed.
-
-The frontend checkout test suite now has 34 passing tests. The previously
-verified backend regression suite had 56 passing tests. Together, these
-represent 90 passing tests across the two suites, although the backend
-suite was not rerun as part of this frontend change.
-
-Buy Now order submission remains disabled. The checkout completion
-helper is not connected to the submission handler, and the backend
-idempotency migration has not been applied to the live database.
-
-No live orders or customer database records were used for these tests.
-
-### Buy Now confirmed-order completion safety
-
-The Buy Now completion helper now refuses to clear a stored idempotency attempt unless the attempt has a confirmed state and a valid positive integer order ID.
-
-This prevents prepared, pending, and invalid confirmed attempts from being cleared prematurely. Keeping unresolved attempts in sessionStorage helps prevent accidental duplicate order creation after a retry or page refresh.
-
-The regression tests verify that:
-
-- Attempts without a confirmed state cannot be cleared.
-- Prepared and pending attempts remain stored.
-- Confirmed attempts with missing or invalid order IDs remain stored.
-- A valid confirmed attempt can be cleared.
-- The existing user and product ownership checks continue to work.
-
-Validation: All 40 frontend checkout tests passed, with zero failures.
-
-Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
-
-### Buy Now HTTP 401 and 403 authentication retry protection
-
-The Buy Now frontend now includes regression tests for HTTP 401 Unauthorized and HTTP 403 Forbidden responses from the order service.
-
-These responses indicate authentication or permission failures. The frontend rejects order creation without treating the request as successful.
-
-The tests verify that:
-
-- HTTP 401 and HTTP 403 do not produce a confirmed Buy Now order ID.
-- The pending idempotency attempt remains stored in sessionStorage.
-- Another order-creation request is blocked on the same page.
-- A page refresh does not allow another order-creation request.
-- Only one mocked order-creation POST is sent for each test.
-
-This milestone adds regression tests only. No production checkout behavior was changed.
-
-Validation: All 39 frontend checkout tests passed, with zero failures.
-
-Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
-
-### Buy Now HTTP 409 conflict retry protection
-
-The Buy Now frontend now has a regression test for HTTP 409 Conflict responses from the order service.
-
-The backend returns HTTP 409 when an idempotency key is reused with different order details. The frontend must not treat this response as successful order creation.
-
-The test verifies that:
-
-- An HTTP 409 response does not produce a confirmed Buy Now order ID.
-- The pending idempotency attempt remains stored in sessionStorage.
-- Another order-creation request is blocked on the same page.
-- A page refresh does not allow another order-creation request.
-- Only one mocked order-creation POST is sent.
-
-This milestone adds test coverage only. No production checkout behavior was changed.
-
-Validation: All 37 frontend checkout tests passed, with zero failures.
-
-Buy Now submission remains disabled. The order idempotency migration has not been applied to the live database.
-
-### Buy Now HTTP 400 retry protection
-
-Added a frontend regression test for HTTP 400 responses during
-Buy Now order creation.
-
-The test verifies that an HTTP 400 response does not report
-successful order creation and that the checkout attempt remains
-stored as pending.
-
-It also verifies that a second order-creation request is blocked
-in the current page and after a simulated page refresh.
-
-The existing frontend implementation already provided this
-protection, so no production code changes were necessary.
-
-All 36 frontend checkout tests passed, including the new HTTP 400
-regression test. The previously verified backend suite had 56
-passing tests, but it was not rerun for this milestone.
-
-Buy Now submission remains disabled, and the backend idempotency
-migration has not been applied to the live database.
-
-No live orders or customer database records were used.
-
-### Buy Now confirmed-state persistence verification
-
-The Buy Now order-creation helper now checks that the confirmed order
-record was actually saved in browser session storage before reporting
-success.
-
-After receiving a valid order ID from the backend, the helper saves
-the checkout attempt as confirmed. It then reads the stored record
-back and checks the user ID, product ID, idempotency key, confirmed
-state, and order ID.
-
-If the confirmed record is missing, corrupted, or does not match,
-the helper marks the order-creation outcome as uncertain and blocks
-another order-creation attempt.
-
-I added a regression test that simulates browser storage silently
-ignoring the confirmed-state write without throwing an error.
-
-All 35 frontend checkout tests passed after the fix. The previously
-verified backend suite had 56 passing tests, but it was not rerun
-for this frontend milestone.
-
-Buy Now submission remains disabled. The checkout completion helper
-is not connected to the submission handler, and the backend
-idempotency migration has not been applied to the live database.
-
-No live orders or customer database records were used.
-
-### Buy Now checkout state persistence and page-refresh recovery
-
-The Buy Now order-creation helper now saves the checkout attempt state in
-browser session storage.
-
-Before sending an order-creation request, it saves the attempt as `pending`.
-This records that the request may have reached the backend. If the page is
-refreshed while an attempt is pending, the frontend blocks another order
-request instead of risking a duplicate order.
-
-After receiving a valid order ID, the helper saves the attempt as `confirmed`
-along with that order ID. If the page is refreshed, the frontend can restore
-the confirmed order ID without sending another order-creation request.
-
-The recovery logic checks the stored user ID, product ID, idempotency key,
-and order ID. Invalid confirmed order IDs are rejected. The idempotency key
-is not removed when an order is created because order creation alone does
-not mean checkout has been completed.
-
-The frontend regression tests cover pending attempts after refresh,
-confirmed-order recovery, invalid stored order IDs, and duplicate-request
-prevention.
-
-The latest frontend suite passed all 29 tests. The Order service backend
-suite previously passed all 56 tests, giving 85 passing automated tests
-across the two suites.
-
-Buy Now submission remains disabled. The checkout completion helper is not
-connected to the submission handler. The backend idempotency migration has
-only been tested in disposable PostgreSQL and has not been applied to the
-live database. No live orders were created during these frontend tests.
-
-### Admin product management API
-
-The Product service now includes dedicated admin-only endpoints for
-managing the furniture product catalogue.
-
-These endpoints use JWT authentication and require the exact `admin`
-role. Customer and staff roles cannot access them.
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| GET | `/api/products/admin/` | List products |
-| POST | `/api/products/admin/` | Create a product |
-| PUT | `/api/products/admin/<id>/` | Update a product |
-| DELETE | `/api/products/admin/<id>/` | Delete a product |
-
-Product creation and updates validate input and reject negative prices
-and stock quantities. Client-supplied IDs and server-managed timestamps
-are rejected. Updating or deleting a nonexistent product returns HTTP 404.
-
-The existing customer and staff product endpoints remain separate.
-
-#### Admin product API testing
-
-The Product service has 58 passing automated tests, including 24
-admin product API tests. The full test suite achieved 87.01% coverage,
-exceeding the configured 60% minimum.
-
-Tests cover product listing, creation, editing, deletion, JWT role
-restrictions, validation, and missing-product handling.
-
-The tests use an isolated test database and do not modify live
-PostgreSQL data.
-
-This milestone implements the backend product management APIs.
-The frontend admin dashboard, order management, customer management,
-and analytics remain future development work.
-
-Buy Now submission remains disabled. The order idempotency migration
-has not been applied to the live database.
+[GitHub](https://github.com/Amit-NCI) · [LinkedIn](https://www.linkedin.com/in/amit-kumar-yadav-70117392/)

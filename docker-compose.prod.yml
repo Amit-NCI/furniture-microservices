@@ -1,0 +1,32 @@
+services:
+  auth-service:
+    environment:
+      ALLOWED_HOSTS: "localhost,127.0.0.1,auth-service,${EC2_PUBLIC_HOST:?Set EC2_PUBLIC_HOST before deployment}"
+      DEBUG: "False"
+    image: amitky15/furniture-auth-service:f26067ad568ba7e7ded4c05cd16ba5a51a1eb721
+    build: !reset null
+
+  order-service:
+    environment:
+      ALLOWED_HOSTS: "localhost,127.0.0.1,order-service,${EC2_PUBLIC_HOST:?Set EC2_PUBLIC_HOST before deployment}"
+      DEBUG: "False"
+    image: amitky15/furniture-order-service:f26067ad568ba7e7ded4c05cd16ba5a51a1eb721
+    build: !reset null
+
+  product-service:
+    environment:
+      ALLOWED_HOSTS: "localhost,127.0.0.1,product-service,${EC2_PUBLIC_HOST:?Set EC2_PUBLIC_HOST before deployment}"
+      DEBUG: "False"
+    image: amitky15/furniture-product-service:f26067ad568ba7e7ded4c05cd16ba5a51a1eb721
+    build: !reset null
+
+  frontend:
+    environment:
+      ALLOWED_HOSTS: "localhost,127.0.0.1,frontend,${EC2_PUBLIC_HOST:?Set EC2_PUBLIC_HOST before deployment}"
+      DEBUG: "False"
+    image: amitky15/furniture-frontend:f26067ad568ba7e7ded4c05cd16ba5a51a1eb721
+    build: !reset null
+
+  product-consumer:
+    image: amitky15/furniture-product-service:f26067ad568ba7e7ded4c05cd16ba5a51a1eb721
+    build: !reset null
